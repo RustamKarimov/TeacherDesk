@@ -1,26 +1,158 @@
-import { FileText, Image, Plus, Save, Sigma, Table2 } from "lucide-react";
-import { useState } from "react";
+import { Check, FileText, Image, Plus, Save, Sigma, Table2, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 
 import { API_BASE, readJson } from "../api";
+import type { MCQMetadataPayload, MCQReviewStatus } from "../types";
+
+type EditorStep = "question" | "options" | "layout" | "metadata" | "preview";
+type OptionDraft = { label: string; text: string };
+
+const stepLabels: Array<{ value: EditorStep; label: string }> = [
+  { value: "question", label: "Question" },
+  { value: "options", label: "Options" },
+  { value: "layout", label: "Layout" },
+  { value: "metadata", label: "Metadata" },
+  { value: "preview", label: "Preview" },
+];
+
+const defaultOptions: OptionDraft[] = [
+  { label: "A", text: "" },
+  { label: "B", text: "" },
+  { label: "C", text: "" },
+  { label: "D", text: "" },
+];
 
 export function MCQAddQuestionView({ onSaved }: { onSaved: () => void }) {
+  const [metadata, setMetadata] = useState<MCQMetadataPayload | null>(null);
+  const [step, setStep] = useState<EditorStep>("question");
   const [title, setTitle] = useState("");
   const [questionText, setQuestionText] = useState("");
   const [correctOption, setCorrectOption] = useState("A");
   const [marks, setMarks] = useState(1);
-  const [optionTexts, setOptionTexts] = useState<Record<string, string>>({ A: "", B: "", C: "", D: "" });
+  const [options, setOptions] = useState<OptionDraft[]>(defaultOptions);
+  const [layoutPreset, setLayoutPreset] = useState("standard");
+  const [optionLayout, setOptionLayout] = useState("single");
+  const [subject, setSubject] = useState("Physics");
+  const [syllabus, setSyllabus] = useState("9702");
+  const [examCode, setExamCode] = useState("");
+  const [paperCode, setPaperCode] = useState("");
+  const [session, setSession] = useState("");
+  const [year, setYear] = useState("");
+  const [source, setSource] = useState("");
+  const [sourceQuestionNumber, setSourceQuestionNumber] = useState("");
+  const [difficulty, setDifficulty] = useState("");
+  const [reviewStatus, setReviewStatus] = useState<MCQReviewStatus>("draft");
+  const [topicIds, setTopicIds] = useState<number[]>([]);
+  const [subtopicIds, setSubtopicIds] = useState<number[]>([]);
+  const [tagIds, setTagIds] = useState<number[]>([]);
+  const [notes, setNotes] = useState("");
+  const [teacherNotes, setTeacherNotes] = useState("");
   const [status, setStatus] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
 
-  async function saveQuestion() {
+  const visibleSubtopics = useMemo(() => {
+    const selectedTopics = metadata?.topics.filter((topic) => topicIds.includes(topic.id)) ?? [];
+    return selectedTopics.flatMap((topic) => topic.subtopics.map((subtopic) => ({ ...subtopic, topicName: topic.name })));
+  }, [metadata, topicIds]);
+
+  useEffect(() => {
+    fetch(`${API_BASE}/api/mcq/metadata/`)
+      .then((response) => readJson<MCQMetadataPayload>(response))
+      .then(setMetadata)
+      .catch((caught) => setError(caught instanceof Error ? caught.message : "Could not load MCQ metadata."));
+  }, []);
+
+  function updateOption(index: number, patch: Partial<OptionDraft>) {
+    setOptions((current) => current.map((option, optionIndex) => (optionIndex === index ? { ...option, ...patch } : option)));
+  }
+
+  function addOption() {
+    const nextLabel = String.fromCharCode(65 + options.length);
+    setOptions((current) => [...current, { label: nextLabel, text: "" }]);
+  }
+
+  function removeOption(index: number) {
+    if (options.length <= 2) return;
+    const removedLabel = options[index].label;
+    const nextOptions = options.filter((_, optionIndex) => optionIndex !== index);
+    setOptions(nextOptions);
+    if (correctOption === removedLabel) {
+      setCorrectOption(nextOptions[0]?.label ?? "A");
+    }
+  }
+
+  function toggleNumberValue(value: number, selected: number[], setter: (values: number[]) => void) {
+    setter(selected.includes(value) ? selected.filter((item) => item !== value) : [...selected, value]);
+  }
+
+  async function saveQuestion(stayOnPage = false) {
     setStatus(null);
-    const response = await fetch(`${API_BASE}/api/mcq/questions/create/`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ title, question_text: questionText, correct_option: correctOption, marks, option_texts: optionTexts }),
-    });
-    await readJson(response);
-    setStatus("Question saved.");
-    onSaved();
+    setError(null);
+    if (!questionText.trim()) {
+      setError("Question text is required for now. Image-only questions will be enabled in the image asset slice.");
+      setStep("question");
+      return;
+    }
+    if (!options.some((option) => option.label === correctOption)) {
+      setError("Choose a valid correct option.");
+      setStep("options");
+      return;
+    }
+    setIsSaving(true);
+    try {
+      const response = await fetch(`${API_BASE}/api/mcq/questions/create/`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          title,
+          question_text: questionText,
+          correct_option: correctOption,
+          marks,
+          option_labels: options.map((option) => option.label),
+          option_texts: Object.fromEntries(options.map((option) => [option.label, option.text])),
+          layout_preset: layoutPreset,
+          option_layout: optionLayout,
+          subject,
+          syllabus,
+          exam_code: examCode,
+          paper_code: paperCode,
+          session,
+          year,
+          source,
+          source_question_number: sourceQuestionNumber,
+          difficulty,
+          review_status: reviewStatus,
+          topic_ids: topicIds,
+          subtopic_ids: subtopicIds,
+          tag_ids: tagIds,
+          notes,
+          teacher_notes: teacherNotes,
+        }),
+      });
+      await readJson(response);
+      setStatus("Question saved.");
+      if (stayOnPage) {
+        resetForm();
+      } else {
+        onSaved();
+      }
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not save question.");
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  function resetForm() {
+    setTitle("");
+    setQuestionText("");
+    setCorrectOption("A");
+    setMarks(1);
+    setOptions(defaultOptions);
+    setStep("question");
+    setNotes("");
+    setTeacherNotes("");
   }
 
   return (
@@ -31,37 +163,109 @@ export function MCQAddQuestionView({ onSaved }: { onSaved: () => void }) {
           <h1>Add MCQ Question</h1>
           <span className="header-subtitle">Build one printable A4-width multiple-choice question.</span>
         </div>
-        <button className="primary-action" onClick={saveQuestion}><Save size={17} />Save question</button>
+        <button className="primary-action" disabled={isSaving} onClick={() => saveQuestion(false)}><Save size={17} />Save question</button>
       </section>
 
       <section className="mcq-editor-grid">
         <div className="panel mcq-editor-panel">
           <div className="step-tabs">
-            <button className="active">Question</button><button>Options</button><button>Layout</button><button>Metadata</button><button>Preview</button>
+            {stepLabels.map((item) => <button className={step === item.value ? "active" : ""} key={item.value} onClick={() => setStep(item.value)}>{item.label}</button>)}
           </div>
           {status ? <div className="callout success">{status}</div> : null}
-          <label className="field-stack"><span>Question title</span><input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Short internal title" /></label>
-          <label className="field-stack"><span>Question text</span><textarea value={questionText} onChange={(event) => setQuestionText(event.target.value)} placeholder="Type text here. Use $v = u + at$ for inline equations or $$E = hf$$ for display equations." /></label>
-          <div className="builder-actions">
-            <button className="secondary-action"><FileText size={16} />Add text block</button>
-            <button className="secondary-action"><Image size={16} />Add image block</button>
-            <button className="secondary-action"><Table2 size={16} />Add table block</button>
-            <button className="secondary-action"><Sigma size={16} />Insert equation</button>
-          </div>
+          {error ? <div className="callout error">{error}</div> : null}
 
-          <div className="option-entry-grid">
-            {(["A", "B", "C", "D"] as const).map((label) => (
-              <label className="field-stack" key={label}>
-                <span>Option {label}</span>
-                <input value={optionTexts[label]} onChange={(event) => setOptionTexts((current) => ({ ...current, [label]: event.target.value }))} placeholder={`${label}. answer text, image can be added later`} />
-              </label>
-            ))}
-          </div>
+          {step === "question" ? (
+            <div className="mcq-step-panel">
+              <label className="field-stack"><span>Question title</span><input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Short internal title" /></label>
+              <label className="field-stack"><span>Question text</span><textarea value={questionText} onChange={(event) => setQuestionText(event.target.value)} placeholder="Type text here. Use $v = u + at$ for inline equations or $$E = hf$$ for display equations." /></label>
+              <div className="builder-actions">
+                <button className="secondary-action" type="button"><FileText size={16} />Text block</button>
+                <button className="secondary-action" type="button"><Image size={16} />Image block soon</button>
+                <button className="secondary-action" type="button"><Table2 size={16} />Table block soon</button>
+                <button className="secondary-action" type="button" onClick={() => setQuestionText((current) => `${current}${current ? " " : ""}$v = u + at$`)}><Sigma size={16} />Insert equation</button>
+              </div>
+            </div>
+          ) : null}
+
+          {step === "options" ? (
+            <div className="mcq-step-panel">
+              <div className="option-editor-list">
+                {options.map((option, index) => (
+                  <div className={`option-editor-card ${correctOption === option.label ? "correct" : ""}`} key={option.label}>
+                    <div className="option-card-head">
+                      <button className="option-letter" onClick={() => setCorrectOption(option.label)} title="Mark as correct">{option.label}</button>
+                      <strong>{correctOption === option.label ? "Correct answer" : "Answer option"}</strong>
+                      <button className="icon-button" disabled={options.length <= 2} onClick={() => removeOption(index)}><Trash2 size={15} /></button>
+                    </div>
+                    <textarea value={option.text} onChange={(event) => updateOption(index, { text: event.target.value })} placeholder={`Option ${option.label} text. Use LaTeX such as $\\frac{1}{2}mv^2$.`} />
+                  </div>
+                ))}
+              </div>
+              <div className="builder-actions">
+                <button className="secondary-action" onClick={addOption}><Plus size={16} />Add option</button>
+                <button className="secondary-action" onClick={() => setOptionLayout("two_column")}>Use two columns</button>
+              </div>
+            </div>
+          ) : null}
+
+          {step === "layout" ? (
+            <div className="mcq-step-panel">
+              <div className="option-entry-grid">
+                <label className="field-stack"><span>Question layout preset</span><select value={layoutPreset} onChange={(event) => setLayoutPreset(event.target.value)}>{metadata?.layout_presets.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
+                <label className="field-stack"><span>Option layout</span><select value={optionLayout} onChange={(event) => setOptionLayout(event.target.value)}>{metadata?.option_layouts.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
+                <label className="field-stack"><span>Marks</span><input type="number" min={0} value={marks} onChange={(event) => setMarks(Number(event.target.value || 1))} /></label>
+                <label className="field-stack"><span>Review status</span><select value={reviewStatus} onChange={(event) => setReviewStatus(event.target.value as MCQReviewStatus)}>{metadata?.review_statuses.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
+              </div>
+            </div>
+          ) : null}
+
+          {step === "metadata" ? (
+            <div className="mcq-step-panel">
+              <div className="option-entry-grid">
+                <label className="field-stack"><span>Subject</span><input value={subject} onChange={(event) => setSubject(event.target.value)} /></label>
+                <label className="field-stack"><span>Syllabus</span><input value={syllabus} onChange={(event) => setSyllabus(event.target.value)} /></label>
+                <label className="field-stack"><span>Exam code</span><input value={examCode} onChange={(event) => setExamCode(event.target.value)} placeholder="9702_w23_qp_11" /></label>
+                <label className="field-stack"><span>Paper code</span><input value={paperCode} onChange={(event) => setPaperCode(event.target.value)} placeholder="Paper 1" /></label>
+                <label className="field-stack"><span>Session</span><input value={session} onChange={(event) => setSession(event.target.value)} placeholder="Oct/Nov" /></label>
+                <label className="field-stack"><span>Year</span><input value={year} onChange={(event) => setYear(event.target.value)} placeholder="2023" /></label>
+                <label className="field-stack"><span>Source</span><input value={source} onChange={(event) => setSource(event.target.value)} placeholder="Manual / Cambridge / worksheet" /></label>
+                <label className="field-stack"><span>Original question</span><input value={sourceQuestionNumber} onChange={(event) => setSourceQuestionNumber(event.target.value)} placeholder="Q12" /></label>
+                <label className="field-stack"><span>Difficulty</span><input value={difficulty} onChange={(event) => setDifficulty(event.target.value)} placeholder="Easy / Medium / Hard" /></label>
+              </div>
+
+              <div className="metadata-picker">
+                <strong>Topics</strong>
+                <div className="checkbox-chip-grid">{metadata?.topics.map((topic) => <label key={topic.id}><input type="checkbox" checked={topicIds.includes(topic.id)} onChange={() => toggleNumberValue(topic.id, topicIds, setTopicIds)} />{topic.name}</label>)}</div>
+              </div>
+              {visibleSubtopics.length ? (
+                <div className="metadata-picker">
+                  <strong>Subtopics</strong>
+                  <div className="checkbox-chip-grid">{visibleSubtopics.map((subtopic) => <label key={subtopic.id}><input type="checkbox" checked={subtopicIds.includes(subtopic.id)} onChange={() => toggleNumberValue(subtopic.id, subtopicIds, setSubtopicIds)} />{subtopic.name}</label>)}</div>
+                </div>
+              ) : null}
+              <div className="metadata-picker">
+                <strong>Tags</strong>
+                <div className="checkbox-chip-grid">{metadata?.tags.map((tag) => <label key={tag.id}><input type="checkbox" checked={tagIds.includes(tag.id)} onChange={() => toggleNumberValue(tag.id, tagIds, setTagIds)} />{tag.name}</label>)}</div>
+              </div>
+              <label className="field-stack"><span>Teacher notes</span><textarea value={teacherNotes} onChange={(event) => setTeacherNotes(event.target.value)} placeholder="Private notes for review, source details, or teaching remarks." /></label>
+            </div>
+          ) : null}
+
+          {step === "preview" ? (
+            <div className="mcq-step-panel">
+              <div className="save-summary">
+                <div><strong>{title || "Untitled MCQ question"}</strong><span>{marks} mark · {options.length} options · {reviewStatus.replace("_", " ")}</span></div>
+                <div><strong>Layout</strong><span>{layoutPreset} / {optionLayout}</span></div>
+                <div><strong>Metadata</strong><span>{topicIds.length} topics · {tagIds.length} tags</span></div>
+              </div>
+              <label className="field-stack"><span>General notes</span><textarea value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Optional notes stored with this question." /></label>
+            </div>
+          ) : null}
 
           <div className="mcq-bottom-controls">
-            <label className="field-stack compact"><span>Correct answer</span><select value={correctOption} onChange={(event) => setCorrectOption(event.target.value)}>{["A", "B", "C", "D"].map((label) => <option key={label}>{label}</option>)}</select></label>
-            <label className="field-stack compact"><span>Marks</span><input type="number" min={0} value={marks} onChange={(event) => setMarks(Number(event.target.value || 1))} /></label>
-            <button className="secondary-action"><Plus size={16} />Save and add another</button>
+            <button className="secondary-action" disabled={step === "question"} onClick={() => setStep(stepLabels[Math.max(stepLabels.findIndex((item) => item.value === step) - 1, 0)].value)}>Back</button>
+            <button className="secondary-action" disabled={step === "preview"} onClick={() => setStep(stepLabels[Math.min(stepLabels.findIndex((item) => item.value === step) + 1, stepLabels.length - 1)].value)}>Continue</button>
+            <button className="primary-action" disabled={isSaving} onClick={() => saveQuestion(true)}><Plus size={16} />Save and add another</button>
           </div>
         </div>
 
@@ -71,11 +275,16 @@ export function MCQAddQuestionView({ onSaved }: { onSaved: () => void }) {
             <div className="paper-question-number">1</div>
             <strong>{title || "Untitled MCQ question"}</strong>
             <p>{questionText || "Question text, diagrams, tables, or image-only content will preview here."}</p>
-            <div className="option-preview-grid">
-              {(["A", "B", "C", "D"] as const).map((label) => (
-                <span className={correctOption === label ? "correct" : ""} key={label}>{label}. {optionTexts[label] || "Answer option"}</span>
+            <div className={`option-preview-grid layout-${optionLayout}`}>
+              {options.map((option) => (
+                <span className={correctOption === option.label ? "correct" : ""} key={option.label}>{option.label}. {option.text || "Answer option"}</span>
               ))}
             </div>
+          </div>
+          <div className="metadata-mini">
+            <span><Check size={15} />{reviewStatus.replace("_", " ")}</span>
+            <span>{marks} mark</span>
+            <span>{optionLayout.replace("_", " ")}</span>
           </div>
         </aside>
       </section>

@@ -4,7 +4,7 @@ from django.test import Client, TestCase
 
 from apps.libraries.models import Library
 
-from .models import MCQOption, MCQQuestion, MCQQuestionBlock
+from .models import MCQOption, MCQQuestion, MCQQuestionBlock, MCQTag, MCQTopic
 
 
 class MCQApiTests(TestCase):
@@ -55,3 +55,37 @@ class MCQApiTests(TestCase):
         first = response.json()["results"][0]
         self.assertEqual(first["title"], "Equation question")
         self.assertEqual(first["has_equations"], True)
+
+    def test_create_question_saves_metadata_and_layout(self):
+        topic = MCQTopic.objects.create(library=self.library, name="Kinematics")
+        tag = MCQTag.objects.create(library=self.library, name="calculation")
+
+        response = self.client.post(
+            "/api/mcq/questions/create/",
+            data=json.dumps(
+                {
+                    "title": "Projectile check",
+                    "question_text": "A projectile moves horizontally.",
+                    "marks": 2,
+                    "correct_option": "C",
+                    "option_labels": ["A", "B", "C", "D", "E"],
+                    "option_texts": {"C": "$s = ut + \\frac{1}{2}at^2$"},
+                    "review_status": "ready",
+                    "layout_preset": "text_image_side",
+                    "option_layout": "two_column",
+                    "topic_ids": [topic.id],
+                    "tag_ids": [tag.id],
+                    "difficulty": "Medium",
+                    "year": 2023,
+                }
+            ),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        question = MCQQuestion.objects.get(title="Projectile check")
+        self.assertEqual(question.options.count(), 5)
+        self.assertEqual(question.review_status, "ready")
+        self.assertEqual(question.option_layout, "two_column")
+        self.assertEqual(list(question.topics.values_list("name", flat=True)), ["Kinematics"])
+        self.assertEqual(list(question.tags.values_list("name", flat=True)), ["calculation"])

@@ -363,6 +363,26 @@ def create_question(request):
     except (TypeError, ValueError):
         return JsonResponse({"error": "marks must be a whole number."}, status=400)
 
+    try:
+        year = int(payload["year"]) if payload.get("year") not in {"", None} else None
+    except (TypeError, ValueError):
+        return JsonResponse({"error": "year must be a whole number."}, status=400)
+
+    allowed_review_statuses = {choice.value for choice in MCQQuestion.ReviewStatus}
+    review_status = payload.get("review_status") or MCQQuestion.ReviewStatus.DRAFT
+    if review_status not in allowed_review_statuses:
+        return JsonResponse({"error": "review_status is not valid."}, status=400)
+
+    allowed_layout_presets = {choice.value for choice in MCQQuestion.LayoutPreset}
+    layout_preset = payload.get("layout_preset") or MCQQuestion.LayoutPreset.STANDARD
+    if layout_preset not in allowed_layout_presets:
+        return JsonResponse({"error": "layout_preset is not valid."}, status=400)
+
+    allowed_option_layouts = {choice.value for choice in MCQQuestion.OptionLayout}
+    option_layout = payload.get("option_layout") or MCQQuestion.OptionLayout.SINGLE
+    if option_layout not in allowed_option_layouts:
+        return JsonResponse({"error": "option_layout is not valid."}, status=400)
+
     question = MCQQuestion.objects.create(
         library=library,
         title=str(payload.get("title") or "").strip(),
@@ -371,13 +391,17 @@ def create_question(request):
         exam_code=str(payload.get("exam_code") or "").strip(),
         paper_code=str(payload.get("paper_code") or "").strip(),
         session=str(payload.get("session") or "").strip(),
-        year=payload.get("year") or None,
+        year=year,
+        variant=str(payload.get("variant") or "").strip(),
         source=str(payload.get("source") or "").strip(),
+        source_question_number=str(payload.get("source_question_number") or "").strip(),
         marks=marks,
+        time_estimate_seconds=payload.get("time_estimate_seconds") or None,
         difficulty=str(payload.get("difficulty") or "").strip(),
-        review_status=payload.get("review_status") or MCQQuestion.ReviewStatus.DRAFT,
-        layout_preset=payload.get("layout_preset") or MCQQuestion.LayoutPreset.STANDARD,
-        option_layout=payload.get("option_layout") or MCQQuestion.OptionLayout.SINGLE,
+        review_status=review_status,
+        layout_preset=layout_preset,
+        option_layout=option_layout,
+        layout_settings=payload.get("layout_settings") if isinstance(payload.get("layout_settings"), dict) else {},
         notes=str(payload.get("notes") or "").strip(),
         teacher_notes=str(payload.get("teacher_notes") or "").strip(),
     )
@@ -403,6 +427,16 @@ def create_question(request):
         option_text = str((payload.get("option_texts") or {}).get(normalized_label, "")).strip()
         if option_text:
             MCQOptionBlock.objects.create(option=option, block_type=MCQOptionBlock.BlockType.TEXT, text=option_text, order=1)
+
+    topic_ids = payload.get("topic_ids") or []
+    subtopic_ids = payload.get("subtopic_ids") or []
+    tag_ids = payload.get("tag_ids") or []
+    if topic_ids:
+        question.topics.set(MCQTopic.objects.filter(library=library, id__in=topic_ids))
+    if subtopic_ids:
+        question.subtopics.set(MCQSubtopic.objects.filter(topic__library=library, id__in=subtopic_ids))
+    if tag_ids:
+        question.tags.set(MCQTag.objects.filter(library=library, id__in=tag_ids))
 
     return JsonResponse(_question_payload(question, include_detail=True), status=201)
 
