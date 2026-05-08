@@ -500,13 +500,15 @@ def _apply_question_payload(question: MCQQuestion, payload: dict[str, object], v
 
     question.blocks.all().delete()
     text = str(payload.get("question_text") or "").strip()
-    if text:
-        MCQQuestionBlock.objects.create(question=question, block_type=MCQQuestionBlock.BlockType.TEXT, text=text, order=1)
+    order = 1
+    for paragraph in [part.strip() for part in text.split("\n\n") if part.strip()]:
+        MCQQuestionBlock.objects.create(question=question, block_type=MCQQuestionBlock.BlockType.TEXT, text=paragraph, order=order)
+        order += 1
     question_asset_id = payload.get("question_asset_id")
     if question_asset_id:
         asset = MCQImageAsset.objects.filter(id=question_asset_id, library=question.library).first()
         if asset:
-            MCQQuestionBlock.objects.create(question=question, block_type=MCQQuestionBlock.BlockType.IMAGE, asset=asset, order=2)
+            MCQQuestionBlock.objects.create(question=question, block_type=MCQQuestionBlock.BlockType.IMAGE, asset=asset, order=order)
 
     question.options.all().delete()
     option_labels = payload.get("option_labels") or ["A", "B", "C", "D"]

@@ -54,6 +54,24 @@ class MCQApiTests(TestCase):
         self.assertEqual(question.options.count(), 4)
         self.assertEqual(MCQOption.objects.get(question=question, label="B").is_correct, True)
 
+    def test_question_text_blank_lines_create_separate_paragraph_blocks(self):
+        response = self.client.post(
+            "/api/mcq/questions/create/",
+            data=json.dumps(
+                {
+                    "title": "Two paragraph question",
+                    "question_text": "First paragraph.\n\nSecond paragraph.",
+                    "marks": 1,
+                    "correct_option": "A",
+                }
+            ),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        question = MCQQuestion.objects.get(title="Two paragraph question")
+        self.assertEqual(list(question.blocks.values_list("text", flat=True)), ["First paragraph.", "Second paragraph."])
+
     def test_question_list_reports_equation_content(self):
         question = MCQQuestion.objects.create(library=self.library, title="Equation question")
         MCQQuestionBlock.objects.create(question=question, block_type=MCQQuestionBlock.BlockType.TEXT, text="Use $F = ma$.", order=1)
