@@ -25,6 +25,7 @@ INSTALLED_APPS = [
     "apps.catalog",
     "apps.splitter",
     "apps.exams",
+    "apps.mcq",
 ]
 
 MIDDLEWARE = [

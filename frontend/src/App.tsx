@@ -1,20 +1,28 @@
 import {
   BookOpen,
+  BookOpenCheck,
   ChevronDown,
   Database,
   FolderOpen,
   LayoutDashboard,
   Moon,
+  PencilLine,
   Search,
   Settings,
   Shuffle,
   Sun,
+  Tags,
 } from "lucide-react";
 import { useEffect, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 
 import { API_BASE, readJson } from "./api";
 import { DashboardView } from "./modules/DashboardView";
 import { ExamGeneratorView } from "./modules/ExamGeneratorView";
+import { MCQAddQuestionView } from "./modules/MCQAddQuestionView";
+import { MCQDashboardView } from "./modules/MCQDashboardView";
+import { MCQExamGeneratorView } from "./modules/MCQExamGeneratorView";
+import { MCQMetadataView } from "./modules/MCQMetadataView";
+import { MCQQuestionBankView } from "./modules/MCQQuestionBankView";
 import { QuestionBankView } from "./modules/QuestionBankView";
 import { SettingsView } from "./modules/SettingsView";
 import { SplitterView } from "./modules/SplitterView";
@@ -23,11 +31,16 @@ import type {
 } from "./types";
 
 const modules = [
-  { name: "Dashboard", icon: LayoutDashboard },
-  { name: "Splitter", icon: FolderOpen },
-  { name: "Question Bank", icon: BookOpen },
-  { name: "Exam Generator", icon: Shuffle },
-  { name: "Settings", icon: Settings },
+  { name: "Dashboard", icon: LayoutDashboard, section: "Home" },
+  { name: "Splitter", icon: FolderOpen, section: "Paper Library" },
+  { name: "Question Bank", icon: BookOpen, section: "Paper Library" },
+  { name: "Exam Generator", icon: Shuffle, section: "Paper Library" },
+  { name: "MCQ Builder", icon: BookOpenCheck, section: "MCQ Builder" },
+  { name: "MCQ Question Bank", icon: BookOpen, section: "MCQ Builder" },
+  { name: "Add MCQ Question", icon: PencilLine, section: "MCQ Builder" },
+  { name: "MCQ Exam Generator", icon: Shuffle, section: "MCQ Builder" },
+  { name: "MCQ Metadata", icon: Tags, section: "MCQ Builder" },
+  { name: "Settings", icon: Settings, section: "System" },
 ] as const;
 
 type ModuleName = (typeof modules)[number]["name"];
@@ -71,13 +84,17 @@ export function App() {
         </div>
 
         <nav className="module-nav">
-          {modules.map((module) => {
+          {modules.map((module, index) => {
             const Icon = module.icon;
+            const previous = modules[index - 1];
             return (
-              <button className={activeModule === module.name ? "active" : ""} key={module.name} onClick={() => setActiveModule(module.name)}>
-                <Icon size={18} />
-                {module.name}
-              </button>
+              <div key={module.name}>
+                {!previous || previous.section !== module.section ? <span className="nav-section-label">{module.section}</span> : null}
+                <button className={activeModule === module.name ? "active" : ""} onClick={() => setActiveModule(module.name)}>
+                  <Icon size={18} />
+                  {module.name}
+                </button>
+              </div>
             );
           })}
         </nav>
@@ -139,6 +156,11 @@ export function App() {
             onOpenQuestionBank={() => setActiveModule("Question Bank")}
           />
         ) : null}
+        {activeModule === "MCQ Builder" ? <MCQDashboardView onOpenModule={setActiveModule} /> : null}
+        {activeModule === "MCQ Question Bank" ? <MCQQuestionBankView onAddQuestion={() => setActiveModule("Add MCQ Question")} /> : null}
+        {activeModule === "Add MCQ Question" ? <MCQAddQuestionView onSaved={() => setActiveModule("MCQ Question Bank")} /> : null}
+        {activeModule === "MCQ Exam Generator" ? <MCQExamGeneratorView /> : null}
+        {activeModule === "MCQ Metadata" ? <MCQMetadataView /> : null}
         {activeModule === "Settings" ? <SettingsView /> : null}
       </main>
     </div>

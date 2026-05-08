@@ -266,3 +266,89 @@ export type DashboardPayload = {
   recent_drafts: Array<{ id: number; title: string; mode: string; marks: number; questions: number; generated: boolean; paper: number | null; created_at: string }>;
   paper_coverage: Array<{ paper: number; questions: number; review_flags: number }>;
 };
+
+export type MCQReviewStatus = "draft" | "ready" | "needs_review" | "verified" | "archived";
+
+export type MCQMetadataPayload = {
+  topics: Array<{
+    id: number;
+    name: string;
+    description: string;
+    color: string;
+    is_active: boolean;
+    question_count: number;
+    subtopics: Array<{ id: number; name: string }>;
+  }>;
+  tags: Array<{ id: number; name: string }>;
+  difficulties: string[];
+  review_statuses: Array<{ value: MCQReviewStatus; label: string }>;
+  layout_presets: Array<{ value: string; label: string }>;
+  option_layouts: Array<{ value: string; label: string }>;
+};
+
+export type MCQQuestionRow = {
+  id: number;
+  title: string;
+  subject: string;
+  syllabus: string;
+  exam_code: string;
+  paper_code: string;
+  session: string;
+  year: number | null;
+  variant: string;
+  source: string;
+  source_question_number: string;
+  marks: number;
+  difficulty: string;
+  review_status: MCQReviewStatus;
+  review_status_label: string;
+  layout_preset: string;
+  layout_preset_label: string;
+  option_layout: string;
+  option_layout_label: string;
+  topics: Array<{ id: number; name: string }>;
+  subtopics: Array<{ id: number; name: string; topic_id: number }>;
+  tags: Array<{ id: number; name: string }>;
+  option_count: number;
+  correct_option: string;
+  has_images: boolean;
+  has_tables: boolean;
+  has_equations: boolean;
+  updated_at: string;
+};
+
+export type MCQQuestionListPayload = {
+  count: number;
+  page: number;
+  page_size: number;
+  page_count: number;
+  results: MCQQuestionRow[];
+};
+
+export type MCQDashboardPayload = {
+  summary: {
+    questions: number;
+    ready_verified: number;
+    needs_review: number;
+    generated_papers: number;
+    assets: number;
+    topics: number;
+  };
+  recent_questions: MCQQuestionRow[];
+  recent_exams: Array<{
+    id: number;
+    title: string;
+    mode: string;
+    mode_label: string;
+    question_count: number;
+    total_marks: number;
+    has_pdf: boolean;
+    updated_at: string;
+  }>;
+  coverage: {
+    text: number;
+    image: number;
+    table: number;
+    equation: number;
+  };
+};
