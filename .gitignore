@@ -1,0 +1,17 @@
+.venv/
+__pycache__/
+*.pyc
+db.sqlite3
+.env
+backend/.test_tmp/
+node_modules/
+dist/
+.vite/
+local_library/source_papers/**
+local_library/QuestionBank/**
+local_library/generated_exams/**
+local_library/manifests/**
+!local_library/source_papers/.gitkeep
+!local_library/QuestionBank/.gitkeep
+!local_library/generated_exams/.gitkeep
+!local_library/manifests/.gitkeep
