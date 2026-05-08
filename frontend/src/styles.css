@@ -4682,9 +4682,25 @@ td,
   padding: 8px;
 }
 
+.option-preview-grid span b,
+.option-text-fragment {
+  display: inline-block;
+  margin-right: 5px;
+}
+
 .option-preview-grid span.correct {
   border-color: #0f766e;
   background: #ecfdf5;
+}
+
+.teacher-preview-note {
+  margin-top: 16px;
+  border: 1px solid #0f766e;
+  border-radius: 6px;
+  background: #ecfdf5;
+  color: #065f46;
+  padding: 8px 10px;
+  font-weight: 800;
 }
 
 .a4-question-image {

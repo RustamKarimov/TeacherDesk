@@ -2,7 +2,21 @@ import { BadgeCheck, Copy, FileQuestion, Image, Pencil, Plus, Search, Table2, Ta
 import { useEffect, useState } from "react";
 
 import { API_BASE, readJson } from "../api";
-import type { MCQMetadataPayload, MCQQuestionListPayload, MCQQuestionRow } from "../types";
+import type { MCQAsset, MCQMetadataPayload, MCQQuestionListPayload, MCQQuestionRow } from "../types";
+
+type MCQQuestionDetailPayload = MCQQuestionRow & {
+  notes: string;
+  teacher_notes: string;
+  layout_settings: Record<string, unknown>;
+  blocks: Array<{ id: number; block_type: string; text: string; asset_id: number | null; asset: MCQAsset | null; order: number }>;
+  options: Array<{
+    id: number;
+    label: string;
+    is_correct: boolean;
+    order: number;
+    blocks: Array<{ id: number; block_type: string; text: string; asset_id: number | null; asset: MCQAsset | null; order: number }>;
+  }>;
+};
 
 export function MCQQuestionBankView({ onAddQuestion, onEditQuestion }: { onAddQuestion: () => void; onEditQuestion: (questionId: number) => void }) {
   const [rows, setRows] = useState<MCQQuestionRow[]>([]);
@@ -17,6 +31,8 @@ export function MCQQuestionBankView({ onAddQuestion, onEditQuestion }: { onAddQu
   const [count, setCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
+  const [selectedDetail, setSelectedDetail] = useState<MCQQuestionDetailPayload | null>(null);
+  const [isTeacherView, setIsTeacherView] = useState(false);
   const selected = rows.find((row) => row.id === selectedId) ?? rows[0] ?? null;
 
   useEffect(() => {
@@ -42,6 +58,17 @@ export function MCQQuestionBankView({ onAddQuestion, onEditQuestion }: { onAddQu
       })
       .catch((caught) => setError(caught instanceof Error ? caught.message : "Could not load MCQ questions."));
   }, [search, topic, reviewStatus, contentType, page, reloadToken]);
+
+  useEffect(() => {
+    if (!selected?.id) {
+      setSelectedDetail(null);
+      return;
+    }
+    fetch(`${API_BASE}/api/mcq/questions/${selected.id}/`)
+      .then((response) => readJson<MCQQuestionDetailPayload>(response))
+      .then(setSelectedDetail)
+      .catch((caught) => setError(caught instanceof Error ? caught.message : "Could not load MCQ preview."));
+  }, [selected?.id, reloadToken]);
 
   async function duplicateQuestion(questionId: number) {
     setError(null);
@@ -134,19 +161,44 @@ export function MCQQuestionBankView({ onAddQuestion, onEditQuestion }: { onAddQu
         <aside className="panel mcq-preview-panel">
           <div className="dashboard-widget-head">
             <div><strong>A4 Preview</strong><span>Student view of the selected question</span></div>
-            <button className="ghost-button">Teacher view</button>
+            <button className="ghost-button" onClick={() => setIsTeacherView((current) => !current)}>{isTeacherView ? "Student view" : "Teacher view"}</button>
           </div>
-          {selected ? (
+          {selected && selectedDetail ? (
             <>
               <div className="a4-preview-card">
                 <div className="paper-question-number">1</div>
                 <strong>{selected.title || "Untitled MCQ question"}</strong>
-                <p>{selected.topics[0]?.name ? `Topic: ${selected.topics[0].name}` : "Question content will appear here after blocks are added."}</p>
-                <div className="option-preview-grid">
-                  {Array.from({ length: selected.option_count || 4 }, (_, index) => String.fromCharCode(65 + index)).map((label) => (
-                    <span key={label}>{label}. {selected.correct_option === label ? "Correct option" : "Answer option"}</span>
+                {selectedDetail.blocks
+                  .slice()
+                  .sort((left, right) => left.order - right.order)
+                  .map((block) => (
+                    block.block_type === "image" && block.asset ? (
+                      <img className="a4-question-image" src={`${API_BASE}${block.asset.preview_url}`} alt={block.asset.original_name} key={block.id} />
+                    ) : block.text ? (
+                      <p key={block.id}>{block.text}</p>
+                    ) : null
                   ))}
+                <div className={`option-preview-grid layout-${selectedDetail.option_layout}`}>
+                  {selectedDetail.options
+                    .slice()
+                    .sort((left, right) => left.order - right.order)
+                    .map((option) => (
+                      <span className={isTeacherView && option.is_correct ? "correct" : ""} key={option.id}>
+                        <b>{option.label}.</b>
+                        {option.blocks.length ? option.blocks
+                          .slice()
+                          .sort((left, right) => left.order - right.order)
+                          .map((block) => (
+                            block.block_type === "image" && block.asset ? (
+                              <img className="a4-option-image" src={`${API_BASE}${block.asset.preview_url}`} alt={block.asset.original_name} key={block.id} />
+                            ) : block.text ? (
+                              <span className="option-text-fragment" key={block.id}>{block.text}</span>
+                            ) : null
+                          )) : <span className="option-text-fragment">Answer option</span>}
+                      </span>
+                    ))}
                 </div>
+                {isTeacherView ? <div className="teacher-preview-note">Correct answer: {selected.correct_option || "not set"}</div> : null}
               </div>
               <div className="metadata-mini">
                 <span><BadgeCheck size={15} />{selected.review_status_label}</span>
@@ -154,7 +206,7 @@ export function MCQQuestionBankView({ onAddQuestion, onEditQuestion }: { onAddQu
                 <span>{selected.option_layout_label}</span>
               </div>
             </>
-          ) : <div className="empty-state"><FileQuestion size={30} /><strong>No question selected</strong><span>Select or create an MCQ question to preview it.</span></div>}
+          ) : selected ? <div className="empty-state"><FileQuestion size={30} /><strong>Loading preview</strong><span>Fetching the selected question blocks.</span></div> : <div className="empty-state"><FileQuestion size={30} /><strong>No question selected</strong><span>Select or create an MCQ question to preview it.</span></div>}
         </aside>
       </section>
     </>
