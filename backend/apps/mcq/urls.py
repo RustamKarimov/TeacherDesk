@@ -255,6 +255,100 @@ def metadata(request):
 
 
 @csrf_exempt
+def save_topic(request):
+    if request.method != "POST":
+        return JsonResponse({"error": "POST is required."}, status=405)
+    try:
+        payload = json.loads(request.body or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Request body must be valid JSON."}, status=400)
+
+    library = active_library()
+    name = str(payload.get("name") or "").strip()
+    if not name:
+        return JsonResponse({"error": "Topic name is required."}, status=400)
+    topic_id = payload.get("id")
+    topic = MCQTopic.objects.filter(id=topic_id, library=library).first() if topic_id else None
+    if not topic:
+        topic = MCQTopic(library=library)
+    if MCQTopic.objects.filter(library=library, name__iexact=name).exclude(id=topic.id).exists():
+        return JsonResponse({"error": f'Topic "{name}" already exists.'}, status=400)
+    topic.name = name
+    topic.description = str(payload.get("description") or "").strip()
+    topic.color = str(payload.get("color") or "").strip()[:20]
+    topic.is_active = bool(payload.get("is_active", True))
+    topic.save()
+    return JsonResponse(_topic_payload(MCQTopic.objects.prefetch_related("subtopics").annotate(question_count=Count("questions", distinct=True)).get(id=topic.id)))
+
+
+@csrf_exempt
+def delete_topic(request, topic_id: int):
+    if request.method != "POST":
+        return JsonResponse({"error": "POST is required."}, status=405)
+    library = active_library()
+    try:
+        topic = MCQTopic.objects.get(id=topic_id, library=library)
+    except MCQTopic.DoesNotExist:
+        return JsonResponse({"error": "Topic not found."}, status=404)
+    if topic.questions.exists():
+        return JsonResponse({"error": "This topic is used by questions. Remove it from questions before deleting."}, status=400)
+    topic.delete()
+    return JsonResponse({"ok": True})
+
+
+@csrf_exempt
+def save_subtopic(request):
+    if request.method != "POST":
+        return JsonResponse({"error": "POST is required."}, status=405)
+    try:
+        payload = json.loads(request.body or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Request body must be valid JSON."}, status=400)
+
+    name = str(payload.get("name") or "").strip()
+    if not name:
+        return JsonResponse({"error": "Subtopic name is required."}, status=400)
+    try:
+        topic = MCQTopic.objects.get(id=payload.get("topic_id"), library=active_library())
+    except MCQTopic.DoesNotExist:
+        return JsonResponse({"error": "Parent topic not found."}, status=404)
+    subtopic_id = payload.get("id")
+    subtopic = MCQSubtopic.objects.filter(id=subtopic_id, topic=topic).first() if subtopic_id else None
+    if not subtopic:
+        subtopic = MCQSubtopic(topic=topic)
+    if MCQSubtopic.objects.filter(topic=topic, name__iexact=name).exclude(id=subtopic.id).exists():
+        return JsonResponse({"error": f'Subtopic "{name}" already exists for this topic.'}, status=400)
+    subtopic.name = name
+    subtopic.description = str(payload.get("description") or "").strip()
+    subtopic.is_active = bool(payload.get("is_active", True))
+    subtopic.save()
+    return JsonResponse({"id": subtopic.id, "name": subtopic.name, "topic_id": topic.id})
+
+
+@csrf_exempt
+def save_tag(request):
+    if request.method != "POST":
+        return JsonResponse({"error": "POST is required."}, status=405)
+    try:
+        payload = json.loads(request.body or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Request body must be valid JSON."}, status=400)
+    library = active_library()
+    name = str(payload.get("name") or "").strip()
+    if not name:
+        return JsonResponse({"error": "Tag name is required."}, status=400)
+    tag_id = payload.get("id")
+    tag = MCQTag.objects.filter(id=tag_id, library=library).first() if tag_id else None
+    if not tag:
+        tag = MCQTag(library=library)
+    if MCQTag.objects.filter(library=library, name__iexact=name).exclude(id=tag.id).exists():
+        return JsonResponse({"error": f'Tag "{name}" already exists.'}, status=400)
+    tag.name = name
+    tag.save()
+    return JsonResponse({"id": tag.id, "name": tag.name})
+
+
+@csrf_exempt
 def create_question(request):
     if request.method != "POST":
         return JsonResponse({"error": "POST is required."}, status=405)
@@ -320,4 +414,8 @@ urlpatterns = [
     path("questions/create/", create_question),
     path("questions/<int:question_id>/", question_detail),
     path("metadata/", metadata),
+    path("metadata/topics/save/", save_topic),
+    path("metadata/topics/<int:topic_id>/delete/", delete_topic),
+    path("metadata/subtopics/save/", save_subtopic),
+    path("metadata/tags/save/", save_tag),
 ]

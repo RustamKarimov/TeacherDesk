@@ -4764,6 +4764,52 @@ td,
   margin-top: 16px;
 }
 
+.metadata-manager,
+.metadata-detail {
+  min-width: 0;
+}
+
+.metadata-row {
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr) max-content;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+}
+
+.metadata-row.active {
+  background: color-mix(in srgb, var(--teal, #14b8a6) 16%, var(--panel-bg));
+}
+
+.secondary-action.danger {
+  border-color: color-mix(in srgb, #ef4444 45%, var(--line));
+  color: #ef4444;
+}
+
+.metadata-subsection {
+  display: grid;
+  gap: 10px;
+  border-top: 1px solid var(--line, #d8e1eb);
+  margin-top: 16px;
+  padding-top: 16px;
+}
+
+.inline-add-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  gap: 10px;
+  align-items: center;
+}
+
+.inline-add-row input {
+  min-height: 40px;
+  border: 1px solid var(--line, #d8e1eb);
+  border-radius: 8px;
+  background: var(--input-bg, #ffffff);
+  color: var(--text, #172033);
+  padding: 0 12px;
+}
+
 @media (max-width: 1180px) {
   .stat-grid.four,
   .mcq-dashboard-grid,
