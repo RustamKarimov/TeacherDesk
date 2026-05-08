@@ -1,8 +1,8 @@
-import { Check, FileText, Image, Plus, Save, Sigma, Table2, Trash2 } from "lucide-react";
+import { Check, FileText, Image, Plus, Save, Sigma, Table2, Trash2, UploadCloud } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { API_BASE, readJson } from "../api";
-import type { MCQMetadataPayload, MCQReviewStatus } from "../types";
+import type { MCQAsset, MCQAssetListPayload, MCQMetadataPayload, MCQReviewStatus } from "../types";
 
 type EditorStep = "question" | "options" | "layout" | "metadata" | "preview";
 type OptionDraft = { label: string; text: string };
@@ -27,7 +27,7 @@ type MCQQuestionDetailPayload = {
   tags: Array<{ id: number; name: string }>;
   notes: string;
   teacher_notes: string;
-  blocks: Array<{ block_type: string; text: string; order: number }>;
+  blocks: Array<{ block_type: string; text: string; asset_id: number | null; asset: MCQAsset | null; order: number }>;
   options: Array<{ label: string; is_correct: boolean; order: number; blocks: Array<{ block_type: string; text: string; order: number }> }>;
 };
 
@@ -51,6 +51,9 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
   const [step, setStep] = useState<EditorStep>("question");
   const [title, setTitle] = useState("");
   const [questionText, setQuestionText] = useState("");
+  const [assets, setAssets] = useState<MCQAsset[]>([]);
+  const [questionAssetId, setQuestionAssetId] = useState<number | null>(null);
+  const [isUploadingAsset, setIsUploadingAsset] = useState(false);
   const [correctOption, setCorrectOption] = useState("A");
   const [marks, setMarks] = useState(1);
   const [options, setOptions] = useState<OptionDraft[]>(defaultOptions);
@@ -80,11 +83,20 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
     return selectedTopics.flatMap((topic) => topic.subtopics.map((subtopic) => ({ ...subtopic, topicName: topic.name })));
   }, [metadata, topicIds]);
 
+  const selectedQuestionAsset = useMemo(
+    () => assets.find((asset) => asset.id === questionAssetId) ?? null,
+    [assets, questionAssetId],
+  );
+
   useEffect(() => {
     fetch(`${API_BASE}/api/mcq/metadata/`)
       .then((response) => readJson<MCQMetadataPayload>(response))
       .then(setMetadata)
       .catch((caught) => setError(caught instanceof Error ? caught.message : "Could not load MCQ metadata."));
+    fetch(`${API_BASE}/api/mcq/assets/?asset_type=question`)
+      .then((response) => readJson<MCQAssetListPayload>(response))
+      .then((payload) => setAssets(payload.results))
+      .catch((caught) => setError(caught instanceof Error ? caught.message : "Could not load MCQ image assets."));
   }, []);
 
   useEffect(() => {
@@ -101,6 +113,12 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
   function loadQuestionIntoForm(question: MCQQuestionDetailPayload) {
     setTitle(question.title ?? "");
     setQuestionText(question.blocks.find((block) => block.block_type === "text")?.text ?? "");
+    const imageBlock = question.blocks.find((block) => block.block_type === "image" && block.asset_id);
+    setQuestionAssetId(imageBlock?.asset_id ?? null);
+    const imageAsset = imageBlock?.asset;
+    if (imageAsset) {
+      setAssets((current) => (current.some((asset) => asset.id === imageAsset.id) ? current : [imageAsset, ...current]));
+    }
     setCorrectOption(question.options.find((option) => option.is_correct)?.label ?? "A");
     setMarks(question.marks ?? 1);
     setOptions(
@@ -160,8 +178,8 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
   async function saveQuestion(stayOnPage = false) {
     setStatus(null);
     setError(null);
-    if (!questionText.trim()) {
-      setError("Question text is required for now. Image-only questions will be enabled in the image asset slice.");
+    if (!questionText.trim() && !questionAssetId) {
+      setError("Add question text or attach a question image before saving.");
       setStep("question");
       return;
     }
@@ -179,6 +197,7 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
         body: JSON.stringify({
           title,
           question_text: questionText,
+          question_asset_id: questionAssetId,
           correct_option: correctOption,
           marks,
           option_labels: options.map((option) => option.label),
@@ -219,12 +238,37 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
   function resetForm() {
     setTitle("");
     setQuestionText("");
+    setQuestionAssetId(null);
     setCorrectOption("A");
     setMarks(1);
     setOptions(defaultOptions);
     setStep("question");
     setNotes("");
     setTeacherNotes("");
+  }
+
+  async function uploadQuestionAsset(file: File | null) {
+    if (!file) return;
+    setError(null);
+    setStatus(null);
+    setIsUploadingAsset(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("asset_type", "question");
+      const response = await fetch(`${API_BASE}/api/mcq/assets/upload/`, {
+        method: "POST",
+        body: formData,
+      });
+      const asset = await readJson<MCQAsset>(response);
+      setAssets((current) => [asset, ...current.filter((item) => item.id !== asset.id)]);
+      setQuestionAssetId(asset.id);
+      setStatus("Question image uploaded and attached.");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not upload question image.");
+    } finally {
+      setIsUploadingAsset(false);
+    }
   }
 
   return (
@@ -250,9 +294,33 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
             <div className="mcq-step-panel">
               <label className="field-stack"><span>Question title</span><input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Short internal title" /></label>
               <label className="field-stack"><span>Question text</span><textarea value={questionText} onChange={(event) => setQuestionText(event.target.value)} placeholder="Type text here. Use $v = u + at$ for inline equations or $$E = hf$$ for display equations." /></label>
+              <div className="asset-upload-card">
+                <div>
+                  <strong>Question image</strong>
+                  <span>Use this for diagrams, graphs, circuits, or image-only questions.</span>
+                </div>
+                <div className="asset-controls">
+                  <label className="compact-upload-button">
+                    <UploadCloud size={16} />
+                    {isUploadingAsset ? "Uploading..." : "Upload image"}
+                    <input type="file" accept="image/*" disabled={isUploadingAsset} onChange={(event) => uploadQuestionAsset(event.target.files?.[0] ?? null)} />
+                  </label>
+                  <select value={questionAssetId ?? ""} onChange={(event) => setQuestionAssetId(event.target.value ? Number(event.target.value) : null)}>
+                    <option value="">No image attached</option>
+                    {assets.map((asset) => <option value={asset.id} key={asset.id}>{asset.original_name}</option>)}
+                  </select>
+                  {questionAssetId ? <button className="secondary-action" type="button" onClick={() => setQuestionAssetId(null)}>Remove image</button> : null}
+                </div>
+                {selectedQuestionAsset ? (
+                  <div className="asset-preview-strip">
+                    <img src={`${API_BASE}${selectedQuestionAsset.preview_url}`} alt={selectedQuestionAsset.original_name} />
+                    <span>{selectedQuestionAsset.original_name}</span>
+                  </div>
+                ) : null}
+              </div>
               <div className="builder-actions">
                 <button className="secondary-action" type="button"><FileText size={16} />Text block</button>
-                <button className="secondary-action" type="button"><Image size={16} />Image block soon</button>
+                <button className="secondary-action" type="button"><Image size={16} />Image block</button>
                 <button className="secondary-action" type="button"><Table2 size={16} />Table block soon</button>
                 <button className="secondary-action" type="button" onClick={() => setQuestionText((current) => `${current}${current ? " " : ""}$v = u + at$`)}><Sigma size={16} />Insert equation</button>
               </div>
@@ -347,6 +415,7 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
             <div className="paper-question-number">1</div>
             <strong>{title || "Untitled MCQ question"}</strong>
             <p>{questionText || "Question text, diagrams, tables, or image-only content will preview here."}</p>
+            {selectedQuestionAsset ? <img className="a4-question-image" src={`${API_BASE}${selectedQuestionAsset.preview_url}`} alt={selectedQuestionAsset.original_name} /> : null}
             <div className={`option-preview-grid layout-${optionLayout}`}>
               {options.map((option) => (
                 <span className={correctOption === option.label ? "correct" : ""} key={option.label}>{option.label}. {option.text || "Answer option"}</span>

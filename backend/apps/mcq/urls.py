@@ -1,7 +1,10 @@
 import json
+import mimetypes
+from pathlib import Path
+from uuid import uuid4
 
 from django.db.models import Count, Q
-from django.http import JsonResponse
+from django.http import FileResponse, JsonResponse
 from django.urls import path
 from django.views.decorators.csrf import csrf_exempt
 
@@ -18,6 +21,24 @@ from .models import (
     MCQTag,
     MCQTopic,
 )
+
+
+ALLOWED_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
+
+
+def _asset_payload(asset: MCQImageAsset) -> dict[str, object]:
+    return {
+        "id": asset.id,
+        "asset_type": asset.asset_type,
+        "asset_type_label": asset.get_asset_type_display(),
+        "original_name": asset.original_name,
+        "file_path": asset.file_path,
+        "file_size": asset.file_size,
+        "width": asset.width,
+        "height": asset.height,
+        "created_at": asset.created_at.isoformat(),
+        "preview_url": f"/api/mcq/assets/{asset.id}/file/",
+    }
 
 
 def _topic_payload(topic: MCQTopic) -> dict[str, object]:
@@ -106,6 +127,7 @@ def _question_payload(question: MCQQuestion, include_detail: bool = False) -> di
                         "block_type": block.block_type,
                         "text": block.text,
                         "asset_id": block.asset_id,
+                        "asset": _asset_payload(block.asset) if block.asset else None,
                         "table_data": block.table_data,
                         "order": block.order,
                         "settings": block.settings,
@@ -254,6 +276,61 @@ def metadata(request):
     )
 
 
+def assets(request):
+    library = active_library()
+    queryset = MCQImageAsset.objects.filter(library=library)
+    asset_type = request.GET.get("asset_type", "").strip()
+    search = request.GET.get("search", "").strip()
+    if asset_type:
+        queryset = queryset.filter(asset_type=asset_type)
+    if search:
+        queryset = queryset.filter(original_name__icontains=search)
+    return JsonResponse({"results": [_asset_payload(asset) for asset in queryset[:200]]})
+
+
+@csrf_exempt
+def upload_asset(request):
+    if request.method != "POST":
+        return JsonResponse({"error": "POST is required."}, status=405)
+    uploaded = request.FILES.get("file")
+    if not uploaded:
+        return JsonResponse({"error": "No file was uploaded."}, status=400)
+    original_name = Path(uploaded.name).name
+    extension = Path(original_name).suffix.lower()
+    if extension not in ALLOWED_IMAGE_EXTENSIONS:
+        return JsonResponse({"error": f"Unsupported image type: {extension or 'unknown'}."}, status=400)
+    library = active_library()
+    asset_type = request.POST.get("asset_type", MCQImageAsset.AssetType.QUESTION)
+    if asset_type not in {choice.value for choice in MCQImageAsset.AssetType}:
+        asset_type = MCQImageAsset.AssetType.OTHER
+    asset_root = Path(library.root_path) / "mcq_assets"
+    asset_root.mkdir(parents=True, exist_ok=True)
+    safe_name = f"{uuid4().hex}{extension}"
+    output_path = asset_root / safe_name
+    with output_path.open("wb") as destination:
+        for chunk in uploaded.chunks():
+            destination.write(chunk)
+    asset = MCQImageAsset.objects.create(
+        library=library,
+        asset_type=asset_type,
+        original_name=original_name,
+        file_path=str(output_path),
+        file_size=output_path.stat().st_size,
+    )
+    return JsonResponse(_asset_payload(asset), status=201)
+
+
+def asset_file(request, asset_id: int):
+    try:
+        asset = MCQImageAsset.objects.get(id=asset_id, library=active_library())
+    except MCQImageAsset.DoesNotExist:
+        return JsonResponse({"error": "Image asset not found."}, status=404)
+    path = Path(asset.file_path)
+    if not path.exists():
+        return JsonResponse({"error": f"Image file not found: {asset.file_path}"}, status=404)
+    return FileResponse(path.open("rb"), content_type=mimetypes.guess_type(path.name)[0] or "application/octet-stream")
+
+
 @csrf_exempt
 def save_topic(request):
     if request.method != "POST":
@@ -383,6 +460,16 @@ def _validate_question_payload(payload: dict[str, object]) -> tuple[dict[str, ob
     }, None
 
 
+def _validate_question_content(payload: dict[str, object], library) -> JsonResponse | None:
+    text = str(payload.get("question_text") or "").strip()
+    asset_id = payload.get("question_asset_id")
+    if not text and not asset_id:
+        return JsonResponse({"error": "Add question text or attach a question image before saving."}, status=400)
+    if asset_id and not MCQImageAsset.objects.filter(id=asset_id, library=library).exists():
+        return JsonResponse({"error": "The selected question image could not be found in the active library."}, status=400)
+    return None
+
+
 def _apply_question_payload(question: MCQQuestion, payload: dict[str, object], validated: dict[str, object]) -> MCQQuestion:
     question.title = str(payload.get("title") or "").strip()
     question.subject = str(payload.get("subject") or "Physics").strip() or "Physics"
@@ -409,6 +496,11 @@ def _apply_question_payload(question: MCQQuestion, payload: dict[str, object], v
     text = str(payload.get("question_text") or "").strip()
     if text:
         MCQQuestionBlock.objects.create(question=question, block_type=MCQQuestionBlock.BlockType.TEXT, text=text, order=1)
+    question_asset_id = payload.get("question_asset_id")
+    if question_asset_id:
+        asset = MCQImageAsset.objects.filter(id=question_asset_id, library=question.library).first()
+        if asset:
+            MCQQuestionBlock.objects.create(question=question, block_type=MCQQuestionBlock.BlockType.IMAGE, asset=asset, order=2)
 
     question.options.all().delete()
     option_labels = payload.get("option_labels") or ["A", "B", "C", "D"]
@@ -446,7 +538,11 @@ def create_question(request):
     validated, error = _validate_question_payload(payload)
     if error:
         return error
-    question = MCQQuestion(library=active_library())
+    library = active_library()
+    content_error = _validate_question_content(payload, library)
+    if content_error:
+        return content_error
+    question = MCQQuestion(library=library)
     _apply_question_payload(question, payload, validated)
 
     return JsonResponse(_question_payload(question, include_detail=True), status=201)
@@ -461,12 +557,16 @@ def update_question(request, question_id: int):
     except json.JSONDecodeError:
         return JsonResponse({"error": "Request body must be valid JSON."}, status=400)
     try:
-        question = MCQQuestion.objects.get(id=question_id, library=active_library())
+        library = active_library()
+        question = MCQQuestion.objects.get(id=question_id, library=library)
     except MCQQuestion.DoesNotExist:
         return JsonResponse({"error": "MCQ question not found."}, status=404)
     validated, error = _validate_question_payload(payload)
     if error:
         return error
+    content_error = _validate_question_content(payload, library)
+    if content_error:
+        return content_error
     _apply_question_payload(question, payload, validated)
     return JsonResponse(_question_payload(question, include_detail=True))
 
@@ -558,6 +658,9 @@ urlpatterns = [
     path("questions/<int:question_id>/update/", update_question),
     path("questions/<int:question_id>/duplicate/", duplicate_question),
     path("questions/<int:question_id>/delete/", delete_question),
+    path("assets/", assets),
+    path("assets/upload/", upload_asset),
+    path("assets/<int:asset_id>/file/", asset_file),
     path("metadata/", metadata),
     path("metadata/topics/save/", save_topic),
     path("metadata/topics/<int:topic_id>/delete/", delete_topic),

@@ -1,16 +1,25 @@
 import json
+import shutil
+from pathlib import Path
 
+from django.conf import settings
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import Client, TestCase
 
 from apps.libraries.models import Library
 
-from .models import MCQOption, MCQOptionBlock, MCQQuestion, MCQQuestionBlock, MCQTag, MCQTopic
+from .models import MCQImageAsset, MCQOption, MCQOptionBlock, MCQQuestion, MCQQuestionBlock, MCQTag, MCQTopic
 
 
 class MCQApiTests(TestCase):
     def setUp(self):
-        self.library = Library.objects.create(name="Test Library", root_path="C:/TeacherDesk/test", is_active=True)
+        self.test_root = Path(settings.BASE_DIR) / ".test_tmp" / "mcq_api"
+        self.test_root.mkdir(parents=True, exist_ok=True)
+        self.library = Library.objects.create(name="Test Library", root_path=str(self.test_root), is_active=True)
         self.client = Client(SERVER_NAME="127.0.0.1")
+
+    def tearDown(self):
+        shutil.rmtree(self.test_root, ignore_errors=True)
 
     def test_dashboard_loads_for_empty_bank(self):
         response = self.client.get("/api/mcq/dashboard/")
@@ -125,3 +134,49 @@ class MCQApiTests(TestCase):
         delete = self.client.post(f"/api/mcq/questions/{duplicate_id}/delete/")
         self.assertEqual(delete.status_code, 200)
         self.assertFalse(MCQQuestion.objects.filter(id=duplicate_id).exists())
+
+    def test_upload_asset_and_create_image_only_question(self):
+        upload = self.client.post(
+            "/api/mcq/assets/upload/",
+            data={
+                "asset_type": "question",
+                "file": SimpleUploadedFile("circuit.png", b"\x89PNG\r\n\x1a\nfake-image", content_type="image/png"),
+            },
+        )
+
+        self.assertEqual(upload.status_code, 201)
+        asset_payload = upload.json()
+        asset = MCQImageAsset.objects.get(id=asset_payload["id"])
+        self.assertTrue(Path(asset.file_path).exists())
+        self.assertEqual(asset.original_name, "circuit.png")
+
+        response = self.client.post(
+            "/api/mcq/questions/create/",
+            data=json.dumps(
+                {
+                    "title": "Image-only circuit question",
+                    "question_asset_id": asset.id,
+                    "marks": 1,
+                    "correct_option": "A",
+                    "option_texts": {"A": "Current increases", "B": "Current decreases"},
+                }
+            ),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        question = MCQQuestion.objects.get(title="Image-only circuit question")
+        self.assertEqual(question.blocks.filter(block_type=MCQQuestionBlock.BlockType.IMAGE, asset=asset).count(), 1)
+        list_response = self.client.get("/api/mcq/questions/?content_type=image")
+        self.assertEqual(list_response.status_code, 200)
+        self.assertEqual(list_response.json()["results"][0]["has_images"], True)
+
+    def test_create_question_requires_text_or_image(self):
+        response = self.client.post(
+            "/api/mcq/questions/create/",
+            data=json.dumps({"title": "Empty question", "marks": 1, "correct_option": "A"}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("question text or attach a question image", response.json()["error"])

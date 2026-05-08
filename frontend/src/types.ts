@@ -286,6 +286,23 @@ export type MCQMetadataPayload = {
   option_layouts: Array<{ value: string; label: string }>;
 };
 
+export type MCQAsset = {
+  id: number;
+  asset_type: string;
+  asset_type_label: string;
+  original_name: string;
+  file_path: string;
+  file_size: number | null;
+  width: number | null;
+  height: number | null;
+  created_at: string;
+  preview_url: string;
+};
+
+export type MCQAssetListPayload = {
+  results: MCQAsset[];
+};
+
 export type MCQQuestionRow = {
   id: number;
   title: string;
