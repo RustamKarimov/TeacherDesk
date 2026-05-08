@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { API_BASE, readJson } from "../api";
 import type { MCQMetadataPayload, MCQQuestionListPayload, MCQQuestionRow } from "../types";
 
-export function MCQQuestionBankView({ onAddQuestion }: { onAddQuestion: () => void }) {
+export function MCQQuestionBankView({ onAddQuestion, onEditQuestion }: { onAddQuestion: () => void; onEditQuestion: (questionId: number) => void }) {
   const [rows, setRows] = useState<MCQQuestionRow[]>([]);
   const [metadata, setMetadata] = useState<MCQMetadataPayload | null>(null);
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -16,6 +16,7 @@ export function MCQQuestionBankView({ onAddQuestion }: { onAddQuestion: () => vo
   const [pageCount, setPageCount] = useState(1);
   const [count, setCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [reloadToken, setReloadToken] = useState(0);
   const selected = rows.find((row) => row.id === selectedId) ?? rows[0] ?? null;
 
   useEffect(() => {
@@ -40,7 +41,31 @@ export function MCQQuestionBankView({ onAddQuestion }: { onAddQuestion: () => vo
         setSelectedId((current) => current ?? payload.results[0]?.id ?? null);
       })
       .catch((caught) => setError(caught instanceof Error ? caught.message : "Could not load MCQ questions."));
-  }, [search, topic, reviewStatus, contentType, page]);
+  }, [search, topic, reviewStatus, contentType, page, reloadToken]);
+
+  async function duplicateQuestion(questionId: number) {
+    setError(null);
+    try {
+      const response = await fetch(`${API_BASE}/api/mcq/questions/${questionId}/duplicate/`, { method: "POST" });
+      await readJson(response);
+      setReloadToken((current) => current + 1);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not duplicate MCQ question.");
+    }
+  }
+
+  async function deleteQuestion(questionId: number) {
+    if (!confirm("Delete this MCQ question?")) return;
+    setError(null);
+    try {
+      const response = await fetch(`${API_BASE}/api/mcq/questions/${questionId}/delete/`, { method: "POST" });
+      await readJson(response);
+      setSelectedId(null);
+      setReloadToken((current) => current + 1);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not delete MCQ question.");
+    }
+  }
 
   return (
     <>
@@ -84,14 +109,18 @@ export function MCQQuestionBankView({ onAddQuestion }: { onAddQuestion: () => vo
               <span>Question</span><span>Topics</span><span>Type</span><span>Marks</span><span>Status</span><span>Actions</span>
             </div>
             {rows.length ? rows.map((row) => (
-              <button className={`mcq-table-row ${selected?.id === row.id ? "active" : ""}`} key={row.id} onClick={() => setSelectedId(row.id)}>
+              <div className={`mcq-table-row ${selected?.id === row.id ? "active" : ""}`} key={row.id} onClick={() => setSelectedId(row.id)} role="button" tabIndex={0}>
                 <span><strong>{row.title || `MCQ #${row.id}`}</strong><small>{row.exam_code || row.source || "Manual question"}</small></span>
                 <span className="chip-wrap">{row.topics.slice(0, 2).map((item) => <em key={item.id}>{item.name}</em>)}{row.topics.length > 2 ? <em>+{row.topics.length - 2}</em> : null}</span>
                 <span className="content-icons">{row.has_images ? <Image size={16} /> : null}{row.has_tables ? <Table2 size={16} /> : null}{row.has_equations ? <Tags size={16} /> : null}</span>
                 <span>{row.marks}</span>
                 <span className={`mini-status ${row.review_status === "needs_review" ? "warn" : row.review_status === "verified" || row.review_status === "ready" ? "ok" : ""}`}>{row.review_status_label}</span>
-                <span className="row-actions"><Pencil size={15} /><Copy size={15} /><Trash2 size={15} /></span>
-              </button>
+                <span className="row-actions">
+                  <button className="icon-button" onClick={(event) => { event.stopPropagation(); onEditQuestion(row.id); }} title="Edit question"><Pencil size={15} /></button>
+                  <button className="icon-button" onClick={(event) => { event.stopPropagation(); duplicateQuestion(row.id); }} title="Duplicate question"><Copy size={15} /></button>
+                  <button className="icon-button danger-icon" onClick={(event) => { event.stopPropagation(); deleteQuestion(row.id); }} title="Delete question"><Trash2 size={15} /></button>
+                </span>
+              </div>
             )) : <div className="dashboard-empty">No MCQ questions match these filters.</div>}
           </div>
 

@@ -348,6 +348,92 @@ def save_tag(request):
     return JsonResponse({"id": tag.id, "name": tag.name})
 
 
+def _validate_question_payload(payload: dict[str, object]) -> tuple[dict[str, object] | None, JsonResponse | None]:
+    try:
+        marks = max(int(payload.get("marks") or 1), 0)
+    except (TypeError, ValueError):
+        return None, JsonResponse({"error": "marks must be a whole number."}, status=400)
+
+    try:
+        year = int(payload["year"]) if payload.get("year") not in {"", None} else None
+    except (TypeError, ValueError):
+        return None, JsonResponse({"error": "year must be a whole number."}, status=400)
+
+    allowed_review_statuses = {choice.value for choice in MCQQuestion.ReviewStatus}
+    review_status = payload.get("review_status") or MCQQuestion.ReviewStatus.DRAFT
+    if review_status not in allowed_review_statuses:
+        return None, JsonResponse({"error": "review_status is not valid."}, status=400)
+
+    allowed_layout_presets = {choice.value for choice in MCQQuestion.LayoutPreset}
+    layout_preset = payload.get("layout_preset") or MCQQuestion.LayoutPreset.STANDARD
+    if layout_preset not in allowed_layout_presets:
+        return None, JsonResponse({"error": "layout_preset is not valid."}, status=400)
+
+    allowed_option_layouts = {choice.value for choice in MCQQuestion.OptionLayout}
+    option_layout = payload.get("option_layout") or MCQQuestion.OptionLayout.SINGLE
+    if option_layout not in allowed_option_layouts:
+        return None, JsonResponse({"error": "option_layout is not valid."}, status=400)
+
+    return {
+        "marks": marks,
+        "year": year,
+        "review_status": review_status,
+        "layout_preset": layout_preset,
+        "option_layout": option_layout,
+    }, None
+
+
+def _apply_question_payload(question: MCQQuestion, payload: dict[str, object], validated: dict[str, object]) -> MCQQuestion:
+    question.title = str(payload.get("title") or "").strip()
+    question.subject = str(payload.get("subject") or "Physics").strip() or "Physics"
+    question.syllabus = str(payload.get("syllabus") or "9702").strip() or "9702"
+    question.exam_code = str(payload.get("exam_code") or "").strip()
+    question.paper_code = str(payload.get("paper_code") or "").strip()
+    question.session = str(payload.get("session") or "").strip()
+    question.year = validated["year"]
+    question.variant = str(payload.get("variant") or "").strip()
+    question.source = str(payload.get("source") or "").strip()
+    question.source_question_number = str(payload.get("source_question_number") or "").strip()
+    question.marks = validated["marks"]
+    question.time_estimate_seconds = payload.get("time_estimate_seconds") or None
+    question.difficulty = str(payload.get("difficulty") or "").strip()
+    question.review_status = validated["review_status"]
+    question.layout_preset = validated["layout_preset"]
+    question.option_layout = validated["option_layout"]
+    question.layout_settings = payload.get("layout_settings") if isinstance(payload.get("layout_settings"), dict) else {}
+    question.notes = str(payload.get("notes") or "").strip()
+    question.teacher_notes = str(payload.get("teacher_notes") or "").strip()
+    question.save()
+
+    question.blocks.all().delete()
+    text = str(payload.get("question_text") or "").strip()
+    if text:
+        MCQQuestionBlock.objects.create(question=question, block_type=MCQQuestionBlock.BlockType.TEXT, text=text, order=1)
+
+    question.options.all().delete()
+    option_labels = payload.get("option_labels") or ["A", "B", "C", "D"]
+    if not isinstance(option_labels, list) or not option_labels:
+        option_labels = ["A", "B", "C", "D"]
+    correct_label = str(payload.get("correct_option") or "").strip().upper()
+    for index, label in enumerate(option_labels):
+        normalized_label = str(label or "").strip().upper()[:8]
+        if not normalized_label:
+            continue
+        option = MCQOption.objects.create(question=question, label=normalized_label, order=index + 1, is_correct=normalized_label == correct_label)
+        option_text = str((payload.get("option_texts") or {}).get(normalized_label, "")).strip()
+        if option_text:
+            MCQOptionBlock.objects.create(option=option, block_type=MCQOptionBlock.BlockType.TEXT, text=option_text, order=1)
+
+    library = question.library
+    topic_ids = payload.get("topic_ids") or []
+    subtopic_ids = payload.get("subtopic_ids") or []
+    tag_ids = payload.get("tag_ids") or []
+    question.topics.set(MCQTopic.objects.filter(library=library, id__in=topic_ids))
+    question.subtopics.set(MCQSubtopic.objects.filter(topic__library=library, id__in=subtopic_ids))
+    question.tags.set(MCQTag.objects.filter(library=library, id__in=tag_ids))
+    return question
+
+
 @csrf_exempt
 def create_question(request):
     if request.method != "POST":
@@ -357,88 +443,110 @@ def create_question(request):
     except json.JSONDecodeError:
         return JsonResponse({"error": "Request body must be valid JSON."}, status=400)
 
-    library = active_library()
-    try:
-        marks = max(int(payload.get("marks") or 1), 0)
-    except (TypeError, ValueError):
-        return JsonResponse({"error": "marks must be a whole number."}, status=400)
-
-    try:
-        year = int(payload["year"]) if payload.get("year") not in {"", None} else None
-    except (TypeError, ValueError):
-        return JsonResponse({"error": "year must be a whole number."}, status=400)
-
-    allowed_review_statuses = {choice.value for choice in MCQQuestion.ReviewStatus}
-    review_status = payload.get("review_status") or MCQQuestion.ReviewStatus.DRAFT
-    if review_status not in allowed_review_statuses:
-        return JsonResponse({"error": "review_status is not valid."}, status=400)
-
-    allowed_layout_presets = {choice.value for choice in MCQQuestion.LayoutPreset}
-    layout_preset = payload.get("layout_preset") or MCQQuestion.LayoutPreset.STANDARD
-    if layout_preset not in allowed_layout_presets:
-        return JsonResponse({"error": "layout_preset is not valid."}, status=400)
-
-    allowed_option_layouts = {choice.value for choice in MCQQuestion.OptionLayout}
-    option_layout = payload.get("option_layout") or MCQQuestion.OptionLayout.SINGLE
-    if option_layout not in allowed_option_layouts:
-        return JsonResponse({"error": "option_layout is not valid."}, status=400)
-
-    question = MCQQuestion.objects.create(
-        library=library,
-        title=str(payload.get("title") or "").strip(),
-        subject=str(payload.get("subject") or "Physics").strip() or "Physics",
-        syllabus=str(payload.get("syllabus") or "9702").strip() or "9702",
-        exam_code=str(payload.get("exam_code") or "").strip(),
-        paper_code=str(payload.get("paper_code") or "").strip(),
-        session=str(payload.get("session") or "").strip(),
-        year=year,
-        variant=str(payload.get("variant") or "").strip(),
-        source=str(payload.get("source") or "").strip(),
-        source_question_number=str(payload.get("source_question_number") or "").strip(),
-        marks=marks,
-        time_estimate_seconds=payload.get("time_estimate_seconds") or None,
-        difficulty=str(payload.get("difficulty") or "").strip(),
-        review_status=review_status,
-        layout_preset=layout_preset,
-        option_layout=option_layout,
-        layout_settings=payload.get("layout_settings") if isinstance(payload.get("layout_settings"), dict) else {},
-        notes=str(payload.get("notes") or "").strip(),
-        teacher_notes=str(payload.get("teacher_notes") or "").strip(),
-    )
-
-    text = str(payload.get("question_text") or "").strip()
-    if text:
-        MCQQuestionBlock.objects.create(question=question, block_type=MCQQuestionBlock.BlockType.TEXT, text=text, order=1)
-
-    option_labels = payload.get("option_labels") or ["A", "B", "C", "D"]
-    if not isinstance(option_labels, list) or not option_labels:
-        option_labels = ["A", "B", "C", "D"]
-    correct_label = str(payload.get("correct_option") or "").strip().upper()
-    for index, label in enumerate(option_labels):
-        normalized_label = str(label or "").strip().upper()[:8]
-        if not normalized_label:
-            continue
-        option = MCQOption.objects.create(
-            question=question,
-            label=normalized_label,
-            order=index + 1,
-            is_correct=normalized_label == correct_label,
-        )
-        option_text = str((payload.get("option_texts") or {}).get(normalized_label, "")).strip()
-        if option_text:
-            MCQOptionBlock.objects.create(option=option, block_type=MCQOptionBlock.BlockType.TEXT, text=option_text, order=1)
-
-    topic_ids = payload.get("topic_ids") or []
-    subtopic_ids = payload.get("subtopic_ids") or []
-    tag_ids = payload.get("tag_ids") or []
-    if topic_ids:
-        question.topics.set(MCQTopic.objects.filter(library=library, id__in=topic_ids))
-    if subtopic_ids:
-        question.subtopics.set(MCQSubtopic.objects.filter(topic__library=library, id__in=subtopic_ids))
-    if tag_ids:
-        question.tags.set(MCQTag.objects.filter(library=library, id__in=tag_ids))
+    validated, error = _validate_question_payload(payload)
+    if error:
+        return error
+    question = MCQQuestion(library=active_library())
+    _apply_question_payload(question, payload, validated)
 
     return JsonResponse(_question_payload(question, include_detail=True), status=201)
+
+
+@csrf_exempt
+def update_question(request, question_id: int):
+    if request.method != "POST":
+        return JsonResponse({"error": "POST is required."}, status=405)
+    try:
+        payload = json.loads(request.body or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Request body must be valid JSON."}, status=400)
+    try:
+        question = MCQQuestion.objects.get(id=question_id, library=active_library())
+    except MCQQuestion.DoesNotExist:
+        return JsonResponse({"error": "MCQ question not found."}, status=404)
+    validated, error = _validate_question_payload(payload)
+    if error:
+        return error
+    _apply_question_payload(question, payload, validated)
+    return JsonResponse(_question_payload(question, include_detail=True))
+
+
+@csrf_exempt
+def duplicate_question(request, question_id: int):
+    if request.method != "POST":
+        return JsonResponse({"error": "POST is required."}, status=405)
+    try:
+        source = (
+            MCQQuestion.objects.prefetch_related("topics", "subtopics", "tags", "blocks", "options", "options__blocks")
+            .get(id=question_id, library=active_library())
+        )
+    except MCQQuestion.DoesNotExist:
+        return JsonResponse({"error": "MCQ question not found."}, status=404)
+    duplicate = MCQQuestion.objects.create(
+        library=source.library,
+        title=f"{source.title or 'Untitled question'} copy",
+        subject=source.subject,
+        syllabus=source.syllabus,
+        exam_code=source.exam_code,
+        paper_code=source.paper_code,
+        session=source.session,
+        year=source.year,
+        variant=source.variant,
+        source=source.source,
+        source_question_number=source.source_question_number,
+        marks=source.marks,
+        time_estimate_seconds=source.time_estimate_seconds,
+        difficulty=source.difficulty,
+        review_status=MCQQuestion.ReviewStatus.DRAFT,
+        notes=source.notes,
+        teacher_notes=source.teacher_notes,
+        layout_preset=source.layout_preset,
+        option_layout=source.option_layout,
+        layout_settings=source.layout_settings,
+    )
+    duplicate.topics.set(source.topics.all())
+    duplicate.subtopics.set(source.subtopics.all())
+    duplicate.tags.set(source.tags.all())
+    for block in source.blocks.all():
+        MCQQuestionBlock.objects.create(
+            question=duplicate,
+            block_type=block.block_type,
+            text=block.text,
+            asset=block.asset,
+            table_data=block.table_data,
+            order=block.order,
+            settings=block.settings,
+        )
+    for option in source.options.all():
+        new_option = MCQOption.objects.create(
+            question=duplicate,
+            label=option.label,
+            is_correct=option.is_correct,
+            order=option.order,
+            layout_settings=option.layout_settings,
+        )
+        for block in option.blocks.all():
+            MCQOptionBlock.objects.create(
+                option=new_option,
+                block_type=block.block_type,
+                text=block.text,
+                asset=block.asset,
+                order=block.order,
+                settings=block.settings,
+            )
+    return JsonResponse(_question_payload(duplicate, include_detail=True), status=201)
+
+
+@csrf_exempt
+def delete_question(request, question_id: int):
+    if request.method != "POST":
+        return JsonResponse({"error": "POST is required."}, status=405)
+    try:
+        question = MCQQuestion.objects.get(id=question_id, library=active_library())
+    except MCQQuestion.DoesNotExist:
+        return JsonResponse({"error": "MCQ question not found."}, status=404)
+    question.delete()
+    return JsonResponse({"ok": True})
 
 
 urlpatterns = [
@@ -447,6 +555,9 @@ urlpatterns = [
     path("questions/", questions),
     path("questions/create/", create_question),
     path("questions/<int:question_id>/", question_detail),
+    path("questions/<int:question_id>/update/", update_question),
+    path("questions/<int:question_id>/duplicate/", duplicate_question),
+    path("questions/<int:question_id>/delete/", delete_question),
     path("metadata/", metadata),
     path("metadata/topics/save/", save_topic),
     path("metadata/topics/<int:topic_id>/delete/", delete_topic),

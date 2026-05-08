@@ -51,6 +51,7 @@ export function App() {
   const [globalSearch, setGlobalSearch] = useState("");
   const [questionBankSearch, setQuestionBankSearch] = useState("");
   const [manualExamQuestionIds, setManualExamQuestionIds] = useState<number[]>([]);
+  const [editingMcqQuestionId, setEditingMcqQuestionId] = useState<number | null>(null);
   const [theme, setTheme] = useState<"dark" | "light">(() => (localStorage.getItem("teacherdesk-theme") === "light" ? "light" : "dark"));
 
   useEffect(() => {
@@ -157,8 +158,27 @@ export function App() {
           />
         ) : null}
         {activeModule === "MCQ Builder" ? <MCQDashboardView onOpenModule={setActiveModule} /> : null}
-        {activeModule === "MCQ Question Bank" ? <MCQQuestionBankView onAddQuestion={() => setActiveModule("Add MCQ Question")} /> : null}
-        {activeModule === "Add MCQ Question" ? <MCQAddQuestionView onSaved={() => setActiveModule("MCQ Question Bank")} /> : null}
+        {activeModule === "MCQ Question Bank" ? (
+          <MCQQuestionBankView
+            onAddQuestion={() => {
+              setEditingMcqQuestionId(null);
+              setActiveModule("Add MCQ Question");
+            }}
+            onEditQuestion={(questionId) => {
+              setEditingMcqQuestionId(questionId);
+              setActiveModule("Add MCQ Question");
+            }}
+          />
+        ) : null}
+        {activeModule === "Add MCQ Question" ? (
+          <MCQAddQuestionView
+            questionId={editingMcqQuestionId}
+            onSaved={() => {
+              setEditingMcqQuestionId(null);
+              setActiveModule("MCQ Question Bank");
+            }}
+          />
+        ) : null}
         {activeModule === "MCQ Exam Generator" ? <MCQExamGeneratorView /> : null}
         {activeModule === "MCQ Metadata" ? <MCQMetadataView /> : null}
         {activeModule === "Settings" ? <SettingsView /> : null}

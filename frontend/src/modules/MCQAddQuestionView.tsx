@@ -6,6 +6,30 @@ import type { MCQMetadataPayload, MCQReviewStatus } from "../types";
 
 type EditorStep = "question" | "options" | "layout" | "metadata" | "preview";
 type OptionDraft = { label: string; text: string };
+type MCQQuestionDetailPayload = {
+  id: number;
+  title: string;
+  subject: string;
+  syllabus: string;
+  exam_code: string;
+  paper_code: string;
+  session: string;
+  year: number | null;
+  source: string;
+  source_question_number: string;
+  marks: number;
+  difficulty: string;
+  review_status: MCQReviewStatus;
+  layout_preset: string;
+  option_layout: string;
+  topics: Array<{ id: number; name: string }>;
+  subtopics: Array<{ id: number; name: string; topic_id: number }>;
+  tags: Array<{ id: number; name: string }>;
+  notes: string;
+  teacher_notes: string;
+  blocks: Array<{ block_type: string; text: string; order: number }>;
+  options: Array<{ label: string; is_correct: boolean; order: number; blocks: Array<{ block_type: string; text: string; order: number }> }>;
+};
 
 const stepLabels: Array<{ value: EditorStep; label: string }> = [
   { value: "question", label: "Question" },
@@ -22,7 +46,7 @@ const defaultOptions: OptionDraft[] = [
   { label: "D", text: "" },
 ];
 
-export function MCQAddQuestionView({ onSaved }: { onSaved: () => void }) {
+export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: number | null; onSaved: () => void }) {
   const [metadata, setMetadata] = useState<MCQMetadataPayload | null>(null);
   const [step, setStep] = useState<EditorStep>("question");
   const [title, setTitle] = useState("");
@@ -63,6 +87,53 @@ export function MCQAddQuestionView({ onSaved }: { onSaved: () => void }) {
       .catch((caught) => setError(caught instanceof Error ? caught.message : "Could not load MCQ metadata."));
   }, []);
 
+  useEffect(() => {
+    if (!questionId) {
+      resetForm();
+      return;
+    }
+    fetch(`${API_BASE}/api/mcq/questions/${questionId}/`)
+      .then((response) => readJson<MCQQuestionDetailPayload>(response))
+      .then(loadQuestionIntoForm)
+      .catch((caught) => setError(caught instanceof Error ? caught.message : "Could not load MCQ question."));
+  }, [questionId]);
+
+  function loadQuestionIntoForm(question: MCQQuestionDetailPayload) {
+    setTitle(question.title ?? "");
+    setQuestionText(question.blocks.find((block) => block.block_type === "text")?.text ?? "");
+    setCorrectOption(question.options.find((option) => option.is_correct)?.label ?? "A");
+    setMarks(question.marks ?? 1);
+    setOptions(
+      question.options.length
+        ? question.options
+            .slice()
+            .sort((left, right) => left.order - right.order)
+            .map((option) => ({
+              label: option.label,
+              text: option.blocks.find((block) => block.block_type === "text")?.text ?? "",
+            }))
+        : defaultOptions,
+    );
+    setLayoutPreset(question.layout_preset || "standard");
+    setOptionLayout(question.option_layout || "single");
+    setSubject(question.subject || "Physics");
+    setSyllabus(question.syllabus || "9702");
+    setExamCode(question.exam_code || "");
+    setPaperCode(question.paper_code || "");
+    setSession(question.session || "");
+    setYear(question.year ? String(question.year) : "");
+    setSource(question.source || "");
+    setSourceQuestionNumber(question.source_question_number || "");
+    setDifficulty(question.difficulty || "");
+    setReviewStatus(question.review_status || "draft");
+    setTopicIds(question.topics.map((topic) => topic.id));
+    setSubtopicIds(question.subtopics.map((subtopic) => subtopic.id));
+    setTagIds(question.tags.map((tag) => tag.id));
+    setNotes(question.notes || "");
+    setTeacherNotes(question.teacher_notes || "");
+    setStep("question");
+  }
+
   function updateOption(index: number, patch: Partial<OptionDraft>) {
     setOptions((current) => current.map((option, optionIndex) => (optionIndex === index ? { ...option, ...patch } : option)));
   }
@@ -101,7 +172,8 @@ export function MCQAddQuestionView({ onSaved }: { onSaved: () => void }) {
     }
     setIsSaving(true);
     try {
-      const response = await fetch(`${API_BASE}/api/mcq/questions/create/`, {
+      const url = questionId ? `${API_BASE}/api/mcq/questions/${questionId}/update/` : `${API_BASE}/api/mcq/questions/create/`;
+      const response = await fetch(url, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -131,7 +203,7 @@ export function MCQAddQuestionView({ onSaved }: { onSaved: () => void }) {
         }),
       });
       await readJson(response);
-      setStatus("Question saved.");
+      setStatus(questionId ? "Question updated." : "Question saved.");
       if (stayOnPage) {
         resetForm();
       } else {
@@ -160,7 +232,7 @@ export function MCQAddQuestionView({ onSaved }: { onSaved: () => void }) {
       <section className="content-header">
         <div>
           <p className="eyebrow">MCQ Builder</p>
-          <h1>Add MCQ Question</h1>
+          <h1>{questionId ? "Edit MCQ Question" : "Add MCQ Question"}</h1>
           <span className="header-subtitle">Build one printable A4-width multiple-choice question.</span>
         </div>
         <button className="primary-action" disabled={isSaving} onClick={() => saveQuestion(false)}><Save size={17} />Save question</button>
@@ -254,9 +326,9 @@ export function MCQAddQuestionView({ onSaved }: { onSaved: () => void }) {
           {step === "preview" ? (
             <div className="mcq-step-panel">
               <div className="save-summary">
-                <div><strong>{title || "Untitled MCQ question"}</strong><span>{marks} mark · {options.length} options · {reviewStatus.replace("_", " ")}</span></div>
+                <div><strong>{title || "Untitled MCQ question"}</strong><span>{marks} mark / {options.length} options / {reviewStatus.replace("_", " ")}</span></div>
                 <div><strong>Layout</strong><span>{layoutPreset} / {optionLayout}</span></div>
-                <div><strong>Metadata</strong><span>{topicIds.length} topics · {tagIds.length} tags</span></div>
+                <div><strong>Metadata</strong><span>{topicIds.length} topics / {tagIds.length} tags</span></div>
               </div>
               <label className="field-stack"><span>General notes</span><textarea value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Optional notes stored with this question." /></label>
             </div>

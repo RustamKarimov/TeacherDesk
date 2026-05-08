@@ -4,7 +4,7 @@ from django.test import Client, TestCase
 
 from apps.libraries.models import Library
 
-from .models import MCQOption, MCQQuestion, MCQQuestionBlock, MCQTag, MCQTopic
+from .models import MCQOption, MCQOptionBlock, MCQQuestion, MCQQuestionBlock, MCQTag, MCQTopic
 
 
 class MCQApiTests(TestCase):
@@ -89,3 +89,39 @@ class MCQApiTests(TestCase):
         self.assertEqual(question.option_layout, "two_column")
         self.assertEqual(list(question.topics.values_list("name", flat=True)), ["Kinematics"])
         self.assertEqual(list(question.tags.values_list("name", flat=True)), ["calculation"])
+
+    def test_update_duplicate_and_delete_question(self):
+        question = MCQQuestion.objects.create(library=self.library, title="Original")
+        MCQQuestionBlock.objects.create(question=question, block_type=MCQQuestionBlock.BlockType.TEXT, text="Original text", order=1)
+        option = MCQOption.objects.create(question=question, label="A", is_correct=True, order=1)
+        MCQOption.objects.create(question=question, label="B", is_correct=False, order=2)
+        MCQOptionBlock.objects.create(option=option, block_type=MCQOptionBlock.BlockType.TEXT, text="Original option", order=1)
+
+        update = self.client.post(
+            f"/api/mcq/questions/{question.id}/update/",
+            data=json.dumps(
+                {
+                    "title": "Updated",
+                    "question_text": "Updated text",
+                    "correct_option": "B",
+                    "option_labels": ["A", "B"],
+                    "option_texts": {"A": "First", "B": "Second"},
+                    "marks": 3,
+                }
+            ),
+            content_type="application/json",
+        )
+        self.assertEqual(update.status_code, 200)
+        question.refresh_from_db()
+        self.assertEqual(question.title, "Updated")
+        self.assertEqual(question.marks, 3)
+        self.assertEqual(question.options.get(label="B").is_correct, True)
+
+        duplicate = self.client.post(f"/api/mcq/questions/{question.id}/duplicate/")
+        self.assertEqual(duplicate.status_code, 201)
+        duplicate_id = duplicate.json()["id"]
+        self.assertTrue(MCQQuestion.objects.filter(id=duplicate_id, title__icontains="copy").exists())
+
+        delete = self.client.post(f"/api/mcq/questions/{duplicate_id}/delete/")
+        self.assertEqual(delete.status_code, 200)
+        self.assertFalse(MCQQuestion.objects.filter(id=duplicate_id).exists())
