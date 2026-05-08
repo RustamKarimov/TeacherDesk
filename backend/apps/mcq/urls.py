@@ -464,10 +464,26 @@ def _validate_question_payload(payload: dict[str, object]) -> tuple[dict[str, ob
 def _validate_question_content(payload: dict[str, object], library) -> JsonResponse | None:
     text = str(payload.get("question_text") or "").strip()
     asset_id = payload.get("question_asset_id")
-    if not text and not asset_id:
+    question_blocks = payload.get("question_blocks") or []
+    has_block_content = False
+    if isinstance(question_blocks, list):
+        for block in question_blocks:
+            if not isinstance(block, dict):
+                continue
+            if str(block.get("text") or "").strip() or block.get("asset_id") or block.get("table_data"):
+                has_block_content = True
+                break
+    if not text and not asset_id and not has_block_content:
         return JsonResponse({"error": "Add question text or attach a question image before saving."}, status=400)
     if asset_id and not MCQImageAsset.objects.filter(id=asset_id, library=library).exists():
         return JsonResponse({"error": "The selected question image could not be found in the active library."}, status=400)
+    if isinstance(question_blocks, list):
+        for block in question_blocks:
+            if not isinstance(block, dict):
+                continue
+            block_asset_id = block.get("asset_id")
+            if block_asset_id and not MCQImageAsset.objects.filter(id=block_asset_id, library=library).exists():
+                return JsonResponse({"error": "One selected question block image could not be found in the active library."}, status=400)
     option_asset_ids = payload.get("option_asset_ids") or {}
     if isinstance(option_asset_ids, dict):
         for label, option_asset_id in option_asset_ids.items():
@@ -499,16 +515,34 @@ def _apply_question_payload(question: MCQQuestion, payload: dict[str, object], v
     question.save()
 
     question.blocks.all().delete()
-    text = str(payload.get("question_text") or "").strip()
+    question_blocks = payload.get("question_blocks") or []
     order = 1
-    for paragraph in [part.strip() for part in text.split("\n\n") if part.strip()]:
-        MCQQuestionBlock.objects.create(question=question, block_type=MCQQuestionBlock.BlockType.TEXT, text=paragraph, order=order)
-        order += 1
-    question_asset_id = payload.get("question_asset_id")
-    if question_asset_id:
-        asset = MCQImageAsset.objects.filter(id=question_asset_id, library=question.library).first()
-        if asset:
-            MCQQuestionBlock.objects.create(question=question, block_type=MCQQuestionBlock.BlockType.IMAGE, asset=asset, order=order)
+    if isinstance(question_blocks, list) and question_blocks:
+        allowed_block_types = {choice.value for choice in MCQQuestionBlock.BlockType}
+        for block in question_blocks:
+            if not isinstance(block, dict):
+                continue
+            block_type = str(block.get("block_type") or MCQQuestionBlock.BlockType.TEXT)
+            if block_type not in allowed_block_types:
+                block_type = MCQQuestionBlock.BlockType.TEXT
+            asset = None
+            if block.get("asset_id"):
+                asset = MCQImageAsset.objects.filter(id=block.get("asset_id"), library=question.library).first()
+            text_value = str(block.get("text") or "").strip()
+            table_data = block.get("table_data") if isinstance(block.get("table_data"), dict) else {}
+            if text_value or asset or table_data:
+                MCQQuestionBlock.objects.create(question=question, block_type=block_type, text=text_value, asset=asset, table_data=table_data, order=order)
+                order += 1
+    else:
+        text = str(payload.get("question_text") or "").strip()
+        for paragraph in [part.strip() for part in text.split("\n\n") if part.strip()]:
+            MCQQuestionBlock.objects.create(question=question, block_type=MCQQuestionBlock.BlockType.TEXT, text=paragraph, order=order)
+            order += 1
+        question_asset_id = payload.get("question_asset_id")
+        if question_asset_id:
+            asset = MCQImageAsset.objects.filter(id=question_asset_id, library=question.library).first()
+            if asset:
+                MCQQuestionBlock.objects.create(question=question, block_type=MCQQuestionBlock.BlockType.IMAGE, asset=asset, order=order)
 
     question.options.all().delete()
     option_labels = payload.get("option_labels") or ["A", "B", "C", "D"]
@@ -521,13 +555,30 @@ def _apply_question_payload(question: MCQQuestion, payload: dict[str, object], v
             continue
         option = MCQOption.objects.create(question=question, label=normalized_label, order=index + 1, is_correct=normalized_label == correct_label)
         option_text = str((payload.get("option_texts") or {}).get(normalized_label, "")).strip()
-        if option_text:
+        option_blocks = (payload.get("option_blocks") or {}).get(normalized_label)
+        if isinstance(option_blocks, list):
+            block_order = 1
+            for block in option_blocks:
+                if not isinstance(block, dict):
+                    continue
+                block_type = str(block.get("block_type") or MCQOptionBlock.BlockType.TEXT)
+                if block_type not in {choice.value for choice in MCQOptionBlock.BlockType}:
+                    block_type = MCQOptionBlock.BlockType.TEXT
+                asset = None
+                if block.get("asset_id"):
+                    asset = MCQImageAsset.objects.filter(id=block.get("asset_id"), library=question.library).first()
+                text_value = str(block.get("text") or "").strip()
+                if text_value or asset:
+                    MCQOptionBlock.objects.create(option=option, block_type=block_type, text=text_value, asset=asset, order=block_order)
+                    block_order += 1
+        elif option_text:
             MCQOptionBlock.objects.create(option=option, block_type=MCQOptionBlock.BlockType.TEXT, text=option_text, order=1)
-        option_asset_id = (payload.get("option_asset_ids") or {}).get(normalized_label)
-        if option_asset_id:
-            asset = MCQImageAsset.objects.filter(id=option_asset_id, library=question.library).first()
-            if asset:
-                MCQOptionBlock.objects.create(option=option, block_type=MCQOptionBlock.BlockType.IMAGE, asset=asset, order=2)
+        if not isinstance(option_blocks, list):
+            option_asset_id = (payload.get("option_asset_ids") or {}).get(normalized_label)
+            if option_asset_id:
+                asset = MCQImageAsset.objects.filter(id=option_asset_id, library=question.library).first()
+                if asset:
+                    MCQOptionBlock.objects.create(option=option, block_type=MCQOptionBlock.BlockType.IMAGE, asset=asset, order=2 if option_text else 1)
 
     library = question.library
     topic_ids = payload.get("topic_ids") or []

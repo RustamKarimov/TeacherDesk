@@ -1,5 +1,6 @@
 import json
 import shutil
+from uuid import uuid4
 from pathlib import Path
 
 from django.conf import settings
@@ -13,7 +14,7 @@ from .models import MCQImageAsset, MCQOption, MCQOptionBlock, MCQQuestion, MCQQu
 
 class MCQApiTests(TestCase):
     def setUp(self):
-        self.test_root = Path(settings.BASE_DIR) / ".test_tmp" / "mcq_api"
+        self.test_root = Path(settings.BASE_DIR) / ".test_tmp" / f"mcq_api_{uuid4().hex}"
         self.test_root.mkdir(parents=True, exist_ok=True)
         self.library = Library.objects.create(name="Test Library", root_path=str(self.test_root), is_active=True)
         self.client = Client(SERVER_NAME="127.0.0.1")
@@ -71,6 +72,29 @@ class MCQApiTests(TestCase):
         self.assertEqual(response.status_code, 201)
         question = MCQQuestion.objects.get(title="Two paragraph question")
         self.assertEqual(list(question.blocks.values_list("text", flat=True)), ["First paragraph.", "Second paragraph."])
+
+    def test_create_question_saves_ordered_content_blocks(self):
+        response = self.client.post(
+            "/api/mcq/questions/create/",
+            data=json.dumps(
+                {
+                    "title": "Block question",
+                    "question_blocks": [
+                        {"block_type": "text", "text": "A particle moves in a circle."},
+                        {"block_type": "equation", "text": "F = \\frac{mv^2}{r}"},
+                        {"block_type": "table", "table_data": {"rows": [["quantity", "unit"], ["force", "N"]]}},
+                    ],
+                    "marks": 1,
+                    "correct_option": "A",
+                }
+            ),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        question = MCQQuestion.objects.get(title="Block question")
+        self.assertEqual(list(question.blocks.values_list("block_type", flat=True)), ["text", "equation", "table"])
+        self.assertEqual(question.blocks.get(block_type="table").table_data["rows"][1], ["force", "N"])
 
     def test_question_list_reports_equation_content(self):
         question = MCQQuestion.objects.create(library=self.library, title="Equation question")

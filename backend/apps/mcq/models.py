@@ -133,6 +133,7 @@ class MCQQuestionBlock(models.Model):
     class BlockType(models.TextChoices):
         TEXT = "text", "Text"
         IMAGE = "image", "Image"
+        EQUATION = "equation", "Equation"
         TABLE = "table", "Table"
         NOTE = "note", "Note"
         MIXED = "mixed", "Mixed"
