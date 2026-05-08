@@ -180,3 +180,34 @@ class MCQApiTests(TestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertIn("question text or attach a question image", response.json()["error"])
+
+    def test_create_question_with_option_image(self):
+        asset_path = self.test_root / "option_graph.png"
+        asset_path.write_bytes(b"\x89PNG\r\n\x1a\nfake-option-image")
+        asset = MCQImageAsset.objects.create(
+            library=self.library,
+            asset_type=MCQImageAsset.AssetType.OPTION,
+            original_name="option_graph.png",
+            file_path=str(asset_path),
+            file_size=asset_path.stat().st_size,
+        )
+
+        response = self.client.post(
+            "/api/mcq/questions/create/",
+            data=json.dumps(
+                {
+                    "title": "Graph option question",
+                    "question_text": "Which graph represents uniform acceleration?",
+                    "marks": 1,
+                    "correct_option": "A",
+                    "option_asset_ids": {"A": asset.id},
+                }
+            ),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        question = MCQQuestion.objects.get(title="Graph option question")
+        option = question.options.get(label="A")
+        self.assertEqual(option.blocks.filter(block_type=MCQOptionBlock.BlockType.IMAGE, asset=asset).count(), 1)
+        self.assertEqual(response.json()["options"][0]["blocks"][0]["asset"]["original_name"], "option_graph.png")

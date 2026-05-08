@@ -4697,6 +4697,14 @@ td,
   border-radius: 6px;
 }
 
+.a4-option-image {
+  display: block;
+  max-width: 100%;
+  max-height: 120px;
+  object-fit: contain;
+  margin-top: 8px;
+}
+
 .metadata-mini {
   display: flex;
   flex-wrap: wrap;
@@ -4900,6 +4908,28 @@ td,
   white-space: nowrap;
   color: var(--text, #172033);
   font-weight: 700;
+}
+
+.option-asset-row {
+  display: grid;
+  grid-template-columns: auto minmax(160px, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.option-image-preview {
+  border: 1px solid var(--line, #d8e1eb);
+  border-radius: 8px;
+  background: var(--panel-bg, #ffffff);
+  padding: 10px;
+}
+
+.option-image-preview img {
+  display: block;
+  max-width: 100%;
+  max-height: 120px;
+  object-fit: contain;
+  margin: 0 auto;
 }
 
 .option-editor-list {

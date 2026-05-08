@@ -62,6 +62,7 @@ def _option_payload(option: MCQOption) -> dict[str, object]:
                 "block_type": block.block_type,
                 "text": block.text,
                 "asset_id": block.asset_id,
+                "asset": _asset_payload(block.asset) if block.asset else None,
                 "order": block.order,
                 "settings": block.settings,
             }
@@ -467,6 +468,11 @@ def _validate_question_content(payload: dict[str, object], library) -> JsonRespo
         return JsonResponse({"error": "Add question text or attach a question image before saving."}, status=400)
     if asset_id and not MCQImageAsset.objects.filter(id=asset_id, library=library).exists():
         return JsonResponse({"error": "The selected question image could not be found in the active library."}, status=400)
+    option_asset_ids = payload.get("option_asset_ids") or {}
+    if isinstance(option_asset_ids, dict):
+        for label, option_asset_id in option_asset_ids.items():
+            if option_asset_id and not MCQImageAsset.objects.filter(id=option_asset_id, library=library).exists():
+                return JsonResponse({"error": f"The selected image for option {label} could not be found in the active library."}, status=400)
     return None
 
 
@@ -515,6 +521,11 @@ def _apply_question_payload(question: MCQQuestion, payload: dict[str, object], v
         option_text = str((payload.get("option_texts") or {}).get(normalized_label, "")).strip()
         if option_text:
             MCQOptionBlock.objects.create(option=option, block_type=MCQOptionBlock.BlockType.TEXT, text=option_text, order=1)
+        option_asset_id = (payload.get("option_asset_ids") or {}).get(normalized_label)
+        if option_asset_id:
+            asset = MCQImageAsset.objects.filter(id=option_asset_id, library=question.library).first()
+            if asset:
+                MCQOptionBlock.objects.create(option=option, block_type=MCQOptionBlock.BlockType.IMAGE, asset=asset, order=2)
 
     library = question.library
     topic_ids = payload.get("topic_ids") or []

@@ -5,7 +5,7 @@ import { API_BASE, readJson } from "../api";
 import type { MCQAsset, MCQAssetListPayload, MCQMetadataPayload, MCQReviewStatus } from "../types";
 
 type EditorStep = "question" | "options" | "layout" | "metadata" | "preview";
-type OptionDraft = { label: string; text: string };
+type OptionDraft = { label: string; text: string; assetId: number | null };
 type MCQQuestionDetailPayload = {
   id: number;
   title: string;
@@ -28,7 +28,12 @@ type MCQQuestionDetailPayload = {
   notes: string;
   teacher_notes: string;
   blocks: Array<{ block_type: string; text: string; asset_id: number | null; asset: MCQAsset | null; order: number }>;
-  options: Array<{ label: string; is_correct: boolean; order: number; blocks: Array<{ block_type: string; text: string; order: number }> }>;
+  options: Array<{
+    label: string;
+    is_correct: boolean;
+    order: number;
+    blocks: Array<{ block_type: string; text: string; asset_id: number | null; asset: MCQAsset | null; order: number }>;
+  }>;
 };
 
 const stepLabels: Array<{ value: EditorStep; label: string }> = [
@@ -40,10 +45,10 @@ const stepLabels: Array<{ value: EditorStep; label: string }> = [
 ];
 
 const defaultOptions: OptionDraft[] = [
-  { label: "A", text: "" },
-  { label: "B", text: "" },
-  { label: "C", text: "" },
-  { label: "D", text: "" },
+  { label: "A", text: "", assetId: null },
+  { label: "B", text: "", assetId: null },
+  { label: "C", text: "", assetId: null },
+  { label: "D", text: "", assetId: null },
 ];
 
 export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: number | null; onSaved: () => void }) {
@@ -93,7 +98,7 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
       .then((response) => readJson<MCQMetadataPayload>(response))
       .then(setMetadata)
       .catch((caught) => setError(caught instanceof Error ? caught.message : "Could not load MCQ metadata."));
-    fetch(`${API_BASE}/api/mcq/assets/?asset_type=question`)
+    fetch(`${API_BASE}/api/mcq/assets/`)
       .then((response) => readJson<MCQAssetListPayload>(response))
       .then((payload) => setAssets(payload.results))
       .catch((caught) => setError(caught instanceof Error ? caught.message : "Could not load MCQ image assets."));
@@ -126,10 +131,17 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
         ? question.options
             .slice()
             .sort((left, right) => left.order - right.order)
-            .map((option) => ({
-              label: option.label,
-              text: option.blocks.find((block) => block.block_type === "text")?.text ?? "",
-            }))
+            .map((option) => {
+              const imageBlock = option.blocks.find((block) => block.block_type === "image" && block.asset_id);
+              if (imageBlock?.asset) {
+                setAssets((current) => (current.some((asset) => asset.id === imageBlock.asset?.id) ? current : [imageBlock.asset!, ...current]));
+              }
+              return {
+                label: option.label,
+                text: option.blocks.find((block) => block.block_type === "text")?.text ?? "",
+                assetId: imageBlock?.asset_id ?? null,
+              };
+            })
         : defaultOptions,
     );
     setLayoutPreset(question.layout_preset || "standard");
@@ -158,7 +170,7 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
 
   function addOption() {
     const nextLabel = String.fromCharCode(65 + options.length);
-    setOptions((current) => [...current, { label: nextLabel, text: "" }]);
+    setOptions((current) => [...current, { label: nextLabel, text: "", assetId: null }]);
   }
 
   function removeOption(index: number) {
@@ -202,6 +214,7 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
           marks,
           option_labels: options.map((option) => option.label),
           option_texts: Object.fromEntries(options.map((option) => [option.label, option.text])),
+          option_asset_ids: Object.fromEntries(options.filter((option) => option.assetId).map((option) => [option.label, option.assetId])),
           layout_preset: layoutPreset,
           option_layout: optionLayout,
           subject,
@@ -266,6 +279,30 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
       setStatus("Question image uploaded and attached.");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not upload question image.");
+    } finally {
+      setIsUploadingAsset(false);
+    }
+  }
+
+  async function uploadOptionAsset(index: number, file: File | null) {
+    if (!file) return;
+    setError(null);
+    setStatus(null);
+    setIsUploadingAsset(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("asset_type", "option");
+      const response = await fetch(`${API_BASE}/api/mcq/assets/upload/`, {
+        method: "POST",
+        body: formData,
+      });
+      const asset = await readJson<MCQAsset>(response);
+      setAssets((current) => [asset, ...current.filter((item) => item.id !== asset.id)]);
+      updateOption(index, { assetId: asset.id });
+      setStatus(`Image attached to option ${options[index]?.label ?? ""}.`);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not upload option image.");
     } finally {
       setIsUploadingAsset(false);
     }
@@ -338,6 +375,23 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
                       <button className="icon-button" disabled={options.length <= 2} onClick={() => removeOption(index)}><Trash2 size={15} /></button>
                     </div>
                     <textarea value={option.text} onChange={(event) => updateOption(index, { text: event.target.value })} placeholder={`Option ${option.label} text. Use LaTeX such as $\\frac{1}{2}mv^2$.`} />
+                    <div className="option-asset-row">
+                      <label className="compact-upload-button">
+                        <UploadCloud size={15} />
+                        Upload option image
+                        <input type="file" accept="image/*" disabled={isUploadingAsset} onChange={(event) => uploadOptionAsset(index, event.target.files?.[0] ?? null)} />
+                      </label>
+                      <select value={option.assetId ?? ""} onChange={(event) => updateOption(index, { assetId: event.target.value ? Number(event.target.value) : null })}>
+                        <option value="">No option image</option>
+                        {assets.map((asset) => <option value={asset.id} key={asset.id}>{asset.original_name}</option>)}
+                      </select>
+                      {option.assetId ? <button className="secondary-action" type="button" onClick={() => updateOption(index, { assetId: null })}>Remove image</button> : null}
+                    </div>
+                    {option.assetId ? (
+                      <div className="option-image-preview">
+                        <img src={`${API_BASE}${assets.find((asset) => asset.id === option.assetId)?.preview_url ?? ""}`} alt={`${option.label} option`} />
+                      </div>
+                    ) : null}
                   </div>
                 ))}
               </div>
@@ -418,7 +472,10 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
             {selectedQuestionAsset ? <img className="a4-question-image" src={`${API_BASE}${selectedQuestionAsset.preview_url}`} alt={selectedQuestionAsset.original_name} /> : null}
             <div className={`option-preview-grid layout-${optionLayout}`}>
               {options.map((option) => (
-                <span className={correctOption === option.label ? "correct" : ""} key={option.label}>{option.label}. {option.text || "Answer option"}</span>
+                <span className={correctOption === option.label ? "correct" : ""} key={option.label}>
+                  <b>{option.label}.</b> {option.text || (option.assetId ? "" : "Answer option")}
+                  {option.assetId ? <img className="a4-option-image" src={`${API_BASE}${assets.find((asset) => asset.id === option.assetId)?.preview_url ?? ""}`} alt={`${option.label} option`} /> : null}
+                </span>
               ))}
             </div>
           </div>
