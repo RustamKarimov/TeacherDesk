@@ -218,14 +218,28 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
   }, [step]);
 
   useEffect(() => {
-    function closeMetadataPicker(event: MouseEvent) {
+    function closeMetadataPicker(event: PointerEvent) {
       const target = event.target;
       if (target instanceof Node && metadataPickerRef.current?.contains(target)) return;
       setOpenMetadataPicker(null);
     }
-    document.addEventListener("mousedown", closeMetadataPicker);
-    return () => document.removeEventListener("mousedown", closeMetadataPicker);
+
+    function closeMetadataPickerOnEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") setOpenMetadataPicker(null);
+    }
+
+    document.addEventListener("pointerdown", closeMetadataPicker, true);
+    document.addEventListener("keydown", closeMetadataPickerOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeMetadataPicker, true);
+      document.removeEventListener("keydown", closeMetadataPickerOnEscape);
+    };
   }, []);
+
+  useEffect(() => {
+    setOpenMetadataPicker(null);
+    setOpenEditorMenu(null);
+  }, [step]);
 
   const richEditor = useEditor({
     extensions: [
@@ -510,6 +524,7 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
   function addOption() {
     const nextLabel = String.fromCharCode(65 + options.length);
     setOptions((current) => [...current, { label: nextLabel, text: "", equation: "", assetId: null, imageWidth: 100, imageFit: "contain" }]);
+    setTableRows((current) => ({ ...current, [nextLabel]: Array.from({ length: tableHeaders.length }, () => "") }));
   }
 
   function removeOption(index: number) {
@@ -661,12 +676,29 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
     ]));
   }
 
+  function optionHasContent(option: OptionDraft) {
+    if (option.text.trim() || option.equation.trim() || option.assetId) return true;
+    if (optionLayout !== "table") return false;
+    return (tableRows[option.label] ?? []).some((cell) => cell.trim());
+  }
+
   async function saveQuestion(stayOnPage = false) {
     setStatus(null);
     setError(null);
     if (!richContentHasContent() && !blocks.some(blockHasContent)) {
       setError("Add question content before saving. You can type, insert an equation, add an image, or add a table.");
       setStep("question");
+      return;
+    }
+    const emptyOptions = options.filter((option) => !optionHasContent(option)).map((option) => option.label);
+    if (emptyOptions.length) {
+      setError(`Add content for option ${emptyOptions.join(", ")} before saving. Options may contain text, LaTeX, an image, or table cells.`);
+      setStep("options");
+      return;
+    }
+    if (!optionHasContent(options.find((option) => option.label === correctOption) ?? options[0])) {
+      setError("The correct answer cannot be empty.");
+      setStep("options");
       return;
     }
     if (!options.some((option) => option.label === correctOption)) {
@@ -735,9 +767,9 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
     setRichEditorContent(defaultRichContent);
     setCorrectOption("A");
     setMarks(1);
-    setOptions(defaultOptions);
-    setTableHeaders(defaultTableHeaders);
-    setTableRows(defaultTableRows);
+    setOptions(defaultOptions.map((option) => ({ ...option })));
+    setTableHeaders([...defaultTableHeaders]);
+    setTableRows(Object.fromEntries(Object.entries(defaultTableRows).map(([label, row]) => [label, [...row]])));
     setStep("question");
     setSourceQuestionNumber("");
     setNotes("");
@@ -971,7 +1003,7 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
           />
           <button className="secondary-action" type="button" onClick={() => void onCreate()}><Plus size={15} />Add</button>
           {isOpen ? (
-            <div className="metadata-combo-list" onMouseDown={(event) => event.preventDefault()}>
+            <div className="metadata-combo-list" onPointerDown={(event) => event.stopPropagation()}>
               {matches.length ? matches.map((item) => (
                 <button
                   className={selectedIds.includes(item.id) ? "active" : ""}

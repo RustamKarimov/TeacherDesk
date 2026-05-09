@@ -4796,14 +4796,14 @@ td,
 
 .option-preview-grid {
   display: grid;
-  gap: 8px;
+  gap: 6px;
   margin-top: 20px;
 }
 
 .option-preview-grid > span {
-  border: 1px solid #d5dde8;
-  border-radius: 6px;
-  padding: 6px 8px;
+  border: 0;
+  border-radius: 4px;
+  padding: 2px 0;
 }
 
 .option-preview-grid.layout-two_column,
@@ -4822,8 +4822,7 @@ td,
 }
 
 .option-preview-grid > span.correct {
-  border-color: #0f766e;
-  background: #ecfdf5;
+  background: transparent;
 }
 
 .teacher-preview-note {
@@ -5896,8 +5895,8 @@ td,
   background: color-mix(in srgb, var(--primary, #14b8a6) 16%, var(--panel-bg));
   color: var(--text, #172033);
   cursor: pointer;
-  padding: 5px 8px;
-  font-size: 13px;
+  padding: 4px 8px;
+  font-size: 12px;
   font-weight: 750;
 }
 
@@ -5929,10 +5928,10 @@ td,
   top: calc(100% + 6px);
   left: 0;
   right: 0;
-  z-index: 25;
+  z-index: 60;
   display: grid;
   gap: 3px;
-  max-height: 220px;
+  max-height: 168px;
   overflow: auto;
   border: 1px solid var(--line, #d8e1eb);
   border-radius: 10px;
@@ -5948,14 +5947,14 @@ td,
   align-items: center;
   justify-content: flex-start;
   gap: 8px;
-  min-height: 32px;
+  min-height: 28px;
   border: 0;
   border-radius: 8px;
   background: transparent;
   color: var(--text, #172033);
   cursor: pointer;
   padding: 0 9px;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 750;
 }
 
