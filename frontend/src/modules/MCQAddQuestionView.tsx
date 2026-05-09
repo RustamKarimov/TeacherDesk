@@ -1,4 +1,4 @@
-import { AlignCenter, AlignLeft, AlignRight, Bold, Check, Heading2, Image, Italic, List, ListOrdered, Plus, Redo2, Save, Sigma, Table2, Trash2, Underline, Undo2, UploadCloud } from "lucide-react";
+import { AlignCenter, AlignLeft, AlignRight, Bold, Check, Heading2, Image, ImageDown, ImageUp, Italic, List, ListOrdered, Maximize2, Plus, Redo2, Save, Scan, Sigma, StretchHorizontal, StretchVertical, Table2, Trash2, Underline, Undo2, UploadCloud } from "lucide-react";
 import { EditorContent, type JSONContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import TiptapImage from "@tiptap/extension-image";
@@ -1244,18 +1244,14 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
               <div className="section-intro compact"><strong>Answer choice arrangement</strong><span>Choose how A-D will be arranged on the generated paper.</span></div>
               <div className="option-layout-card-grid compact-option-layouts">{optionLayoutVisuals.map((item) => <button className={`option-layout-card ${optionLayout === item.value ? "active" : ""}`} key={item.value} onClick={() => { setOptionLayout(item.value); setLayoutPreset(item.value === "table" ? "table_options" : item.value === "grid" ? "option_grid" : "standard"); }} type="button"><span className={`option-layout-thumbnail ${item.className}`}><i /><i /><i /><i /></span><strong>{item.title}</strong></button>)}</div>
               {optionLayout !== "table" ? (
-                <div className="option-image-layout-controls">
-                  <div><strong>Option image position</strong><span>Controls where uploaded option images sit inside A-D choices.</span></div>
-                  <div className="segmented-compact">
-                    <button className={optionImagePlacement === "top" ? "active" : ""} type="button" onClick={() => setOptionImagePlacement("top")}>Image top</button>
-                    <button className={optionImagePlacement === "bottom" ? "active" : ""} type="button" onClick={() => setOptionImagePlacement("bottom")}>Image bottom</button>
-                  </div>
-                  <div className="segmented-compact">
-                    <button className={optionImageSizing === "individual" ? "active" : ""} type="button" onClick={() => setOptionImageSizing("individual")}>Individual</button>
-                    <button className={optionImageSizing === "same_height" ? "active" : ""} type="button" onClick={() => setOptionImageSizing("same_height")}>Same height</button>
-                    <button className={optionImageSizing === "same_width" ? "active" : ""} type="button" onClick={() => setOptionImageSizing("same_width")}>Same width</button>
-                    <button className={optionImageSizing === "same_size" ? "active" : ""} type="button" onClick={() => setOptionImageSizing("same_size")}>Similar size</button>
-                  </div>
+                <div className="option-image-toolbar" aria-label="Option image layout controls">
+                  <button className={optionImagePlacement === "top" ? "active" : ""} type="button" onClick={() => setOptionImagePlacement("top")} title="Place option images above option text" aria-label="Place option images above option text"><ImageUp size={17} /></button>
+                  <button className={optionImagePlacement === "bottom" ? "active" : ""} type="button" onClick={() => setOptionImagePlacement("bottom")} title="Place option images below option text" aria-label="Place option images below option text"><ImageDown size={17} /></button>
+                  <span className="option-image-toolbar-divider" aria-hidden="true" />
+                  <button className={optionImageSizing === "individual" ? "active" : ""} type="button" onClick={() => setOptionImageSizing("individual")} title="Keep each option image at its own size" aria-label="Keep each option image at its own size"><Scan size={17} /></button>
+                  <button className={optionImageSizing === "same_height" ? "active" : ""} type="button" onClick={() => setOptionImageSizing("same_height")} title="Make option images the same height" aria-label="Make option images the same height"><StretchVertical size={17} /></button>
+                  <button className={optionImageSizing === "same_width" ? "active" : ""} type="button" onClick={() => setOptionImageSizing("same_width")} title="Make option images the same width" aria-label="Make option images the same width"><StretchHorizontal size={17} /></button>
+                  <button className={optionImageSizing === "same_size" ? "active" : ""} type="button" onClick={() => setOptionImageSizing("same_size")} title="Make option images similar size" aria-label="Make option images similar size"><Maximize2 size={17} /></button>
                 </div>
               ) : null}
               {optionLayout === "table" ? (
