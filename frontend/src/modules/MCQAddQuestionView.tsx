@@ -159,7 +159,7 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
   const [year, setYear] = useState("");
   const [source, setSource] = useState("");
   const [sourceQuestionNumber, setSourceQuestionNumber] = useState("");
-  const [difficulty, setDifficulty] = useState("");
+  const [difficulty, setDifficulty] = useState("Medium");
   const [reviewStatus, setReviewStatus] = useState<MCQReviewStatus>("draft");
   const [topicIds, setTopicIds] = useState<number[]>([]);
   const [subtopicIds, setSubtopicIds] = useState<number[]>([]);
@@ -168,6 +168,7 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
   const [teacherNotes, setTeacherNotes] = useState("");
   const [newTopicName, setNewTopicName] = useState("");
   const [newTagName, setNewTagName] = useState("");
+  const [openMetadataPicker, setOpenMetadataPicker] = useState<"topics" | "tags" | null>(null);
   const [openEditorMenu, setOpenEditorMenu] = useState<"numbering" | "imageSize" | "imageFit" | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -198,7 +199,7 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
       return () => observer.disconnect();
     };
     const cleanupEditor = observe(editorScaleRef.current, setEditorScale);
-    const cleanupPreview = observe(previewScaleRef.current, setPreviewScale, true);
+    const cleanupPreview = observe(previewScaleRef.current, setPreviewScale);
     return () => {
       cleanupEditor?.();
       cleanupPreview?.();
@@ -396,7 +397,7 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
     setYear(question.year ? String(question.year) : "");
     setSource(question.source || "");
     setSourceQuestionNumber(question.source_question_number || "");
-    setDifficulty(question.difficulty || "");
+    setDifficulty(question.difficulty || "Medium");
     setReviewStatus(question.review_status || "draft");
     setTopicIds(question.topics.map((topic) => topic.id));
     setSubtopicIds(question.subtopics.map((subtopic) => subtopic.id));
@@ -425,15 +426,15 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
     setSession(defaults.session || "");
     setYear(defaults.year || "");
     setSource(defaults.source || "");
-    setDifficulty(defaults.difficulty || "");
+    setDifficulty(defaults.difficulty || "Medium");
     setReviewStatus(defaults.reviewStatus || "draft");
-    setTopicIds(defaults.topicIds || []);
-    setSubtopicIds(defaults.subtopicIds || []);
-    setTagIds(defaults.tagIds || []);
+    setTopicIds([]);
+    setSubtopicIds([]);
+    setTagIds([]);
   }
 
   function rememberMetadataDefaults() {
-    const defaults: LastMetadataDefaults = { subject, syllabus, examCode, paperCode, session, year, source, difficulty, reviewStatus, topicIds, subtopicIds, tagIds };
+    const defaults: LastMetadataDefaults = { subject, syllabus, examCode, paperCode, session, year, source, difficulty, reviewStatus, topicIds: [], subtopicIds: [], tagIds: [] };
     localStorage.setItem(metadataDefaultsKey, JSON.stringify(defaults));
   }
 
@@ -525,9 +526,41 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
     setter(selected.includes(value) ? selected.filter((item) => item !== value) : [...selected, value]);
   }
 
+  function applyExamCodeDefaults() {
+    const normalized = examCode.trim();
+    const match = normalized.match(/^(\d{4})_([smw])(\d{2})_(?:qp|ms)_(\d{2})$/i);
+    if (!match) return;
+    const [, syllabusCode, sessionCode, yearCode, component] = match;
+    const sessionMap: Record<string, string> = { s: "May/June", w: "Oct/Nov", m: "Feb/March" };
+    setSyllabus(syllabusCode);
+    setSubject(syllabusCode === "9702" ? "Physics" : subject || "");
+    setSession(sessionMap[sessionCode.toLowerCase()] ?? session);
+    setYear(`20${yearCode}`);
+    setPaperCode(`Paper ${component.charAt(0)}`);
+    setSource("Cambridge");
+  }
+
+  const difficultyOptions = useMemo(() => {
+    const base = ["Easy", "Medium", "Hard"];
+    const extras = metadata?.difficulties ?? [];
+    return Array.from(new Set([...base, ...extras.filter(Boolean)]));
+  }, [metadata]);
+
+  function metadataMatches(items: Array<{ id: number; name: string }>, query: string) {
+    const needle = query.trim().toLowerCase();
+    return needle ? items.filter((item) => item.name.toLowerCase().includes(needle)) : items;
+  }
+
   async function saveQuickTopic() {
     const name = newTopicName.trim();
     if (!name) return;
+    const existing = metadata?.topics.find((topic) => topic.name.toLowerCase() === name.toLowerCase());
+    if (existing) {
+      setTopicIds((current) => (current.includes(existing.id) ? current : [...current, existing.id]));
+      setNewTopicName("");
+      setOpenMetadataPicker(null);
+      return;
+    }
     setError(null);
     try {
       const response = await fetch(`${API_BASE}/api/mcq/metadata/topics/save/`, {
@@ -537,8 +570,9 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
       });
       const topic = await readJson<MCQMetadataPayload["topics"][number]>(response);
       setMetadata((current) => current ? { ...current, topics: [...current.topics.filter((item) => item.id !== topic.id), topic].sort((a, b) => a.name.localeCompare(b.name)) } : current);
-      setTopicIds((current) => [...current, topic.id]);
+      setTopicIds((current) => (current.includes(topic.id) ? current : [...current, topic.id]));
       setNewTopicName("");
+      setOpenMetadataPicker(null);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not save topic.");
     }
@@ -547,6 +581,13 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
   async function saveQuickTag() {
     const name = newTagName.trim();
     if (!name) return;
+    const existing = metadata?.tags.find((tag) => tag.name.toLowerCase() === name.toLowerCase());
+    if (existing) {
+      setTagIds((current) => (current.includes(existing.id) ? current : [...current, existing.id]));
+      setNewTagName("");
+      setOpenMetadataPicker(null);
+      return;
+    }
     setError(null);
     try {
       const response = await fetch(`${API_BASE}/api/mcq/metadata/tags/save/`, {
@@ -556,8 +597,9 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
       });
       const tag = await readJson<MCQMetadataPayload["tags"][number]>(response);
       setMetadata((current) => current ? { ...current, tags: [...current.tags.filter((item) => item.id !== tag.id), tag].sort((a, b) => a.name.localeCompare(b.name)) } : current);
-      setTagIds((current) => [...current, tag.id]);
+      setTagIds((current) => (current.includes(tag.id) ? current : [...current, tag.id]));
       setNewTagName("");
+      setOpenMetadataPicker(null);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not save tag.");
     }
@@ -677,6 +719,10 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
     setSourceQuestionNumber("");
     setNotes("");
     setTeacherNotes("");
+    setDifficulty("Medium");
+    setNewTopicName("");
+    setNewTagName("");
+    setOpenMetadataPicker(null);
     if (!questionId) applyMetadataDefaults();
   }
 
@@ -773,10 +819,11 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
   function renderRichNode(node: JSONContent, key = "node"): ReactNode {
     const children = node.content?.map((child, index) => renderRichNode(child, `${key}-${index}`));
     if (node.type === "doc") return <>{children}</>;
-    if (node.type === "paragraph") return <p key={key}>{children}</p>;
+    const textAlign = typeof node.attrs?.textAlign === "string" ? node.attrs.textAlign as CSSProperties["textAlign"] : undefined;
+    if (node.type === "paragraph") return <p key={key} style={textAlign ? { textAlign } : undefined}>{children}</p>;
     if (node.type === "heading") {
       const level = Math.min(Number(node.attrs?.level || 2), 3);
-      return level === 1 ? <h1 key={key}>{children}</h1> : level === 2 ? <h2 key={key}>{children}</h2> : <h3 key={key}>{children}</h3>;
+      return level === 1 ? <h1 key={key} style={textAlign ? { textAlign } : undefined}>{children}</h1> : level === 2 ? <h2 key={key} style={textAlign ? { textAlign } : undefined}>{children}</h2> : <h3 key={key} style={textAlign ? { textAlign } : undefined}>{children}</h3>;
     }
     if (node.type === "bulletList") return <ul key={key}>{children}</ul>;
     if (node.type === "orderedList") {
@@ -847,6 +894,77 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
           ))}
         </tbody>
       </table>
+    );
+  }
+
+  function selectedMetadataChips(items: Array<{ id: number; name: string }>, selectedIds: number[], setter: (values: number[]) => void) {
+    const selected = items.filter((item) => selectedIds.includes(item.id));
+    if (!selected.length) return <span className="empty-inline-note">Nothing selected for this question yet.</span>;
+    return (
+      <div className="selected-token-row">
+        {selected.map((item) => (
+          <button key={item.id} type="button" onClick={() => setter(selectedIds.filter((id) => id !== item.id))}>
+            {item.name}<span>×</span>
+          </button>
+        ))}
+      </div>
+    );
+  }
+
+  function renderMetadataPicker(
+    kind: "topics" | "tags",
+    title: string,
+    inputValue: string,
+    setInputValue: (value: string) => void,
+    items: Array<{ id: number; name: string }>,
+    selectedIds: number[],
+    setter: (values: number[]) => void,
+    onCreate: () => Promise<void>,
+    placeholder: string,
+  ) {
+    const matches = metadataMatches(items, inputValue);
+    const isOpen = openMetadataPicker === kind;
+    return (
+      <div className="metadata-picker compact-combo">
+        <strong>{title}</strong>
+        {selectedMetadataChips(items, selectedIds, setter)}
+        <div className="metadata-combo">
+          <input
+            value={inputValue}
+            onFocus={() => setOpenMetadataPicker(kind)}
+            onChange={(event) => {
+              setInputValue(event.target.value);
+              setOpenMetadataPicker(kind);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                void onCreate();
+              }
+              if (event.key === "Escape") setOpenMetadataPicker(null);
+            }}
+            placeholder={placeholder}
+          />
+          <button className="secondary-action" type="button" onClick={() => void onCreate()}><Plus size={15} />Add</button>
+          {isOpen ? (
+            <div className="metadata-combo-list" onMouseDown={(event) => event.preventDefault()}>
+              {matches.length ? matches.map((item) => (
+                <button
+                  className={selectedIds.includes(item.id) ? "active" : ""}
+                  key={item.id}
+                  type="button"
+                  onClick={() => {
+                    toggleNumberValue(item.id, selectedIds, setter);
+                    setInputValue("");
+                  }}
+                >
+                  <Check size={14} />{item.name}
+                </button>
+              )) : <span>No matching {title.toLowerCase()}. Press Enter or Add to create it.</span>}
+            </div>
+          ) : null}
+        </div>
+      </div>
     );
   }
 
@@ -928,24 +1046,26 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
                     <button className="secondary-action" type="button" onClick={addTableColumn}><Plus size={15} />Add column</button>
                     <button className="secondary-action" type="button" onClick={() => setOptionLayout("single")}>Use normal options</button>
                   </div>
-                  <div className="answer-table-editor-grid" style={{ gridTemplateColumns: `72px repeat(${tableHeaders.length}, minmax(140px, 1fr)) 44px` }}>
-                    <div className="table-corner" />
-                    {tableHeaders.map((header, index) => (
-                      <input key={index} value={header} onChange={(event) => updateTableHeader(index, event.target.value)} placeholder={`heading ${index + 1}`} />
-                    ))}
-                    <div />
-                  </div>
-                  <div className="answer-table-body" style={{ gridTemplateColumns: `72px repeat(${tableHeaders.length}, minmax(140px, 1fr)) 44px` }}>
-                    {options.flatMap((option) => [
-                      <button className={`answer-row-select ${correctOption === option.label ? "correct" : ""}`} key={`${option.label}-select`} onClick={() => setCorrectOption(option.label)}>{option.label}</button>,
-                      ...tableHeaders.map((_, index) => <input key={`${option.label}-${index}`} value={tableRows[option.label]?.[index] ?? ""} onChange={(event) => updateTableCell(option.label, index, event.target.value)} placeholder="cell value" />),
-                      <button className="icon-button danger-icon" disabled={options.length <= 2} key={`${option.label}-delete`} onClick={() => removeOption(options.findIndex((item) => item.label === option.label))}><Trash2 size={15} /></button>,
-                    ])}
-                  </div>
-                  <div className="table-column-removers" style={{ gridTemplateColumns: `72px repeat(${tableHeaders.length}, minmax(140px, 1fr)) 44px` }}>
-                    <span />
-                    {tableHeaders.map((_, index) => <button className="mini-step-button" disabled={tableHeaders.length <= 1} key={index} onClick={() => removeTableColumn(index)}>Remove</button>)}
-                    <span />
+                  <div className="table-option-scroll">
+                    <div className="answer-table-editor-grid" style={{ gridTemplateColumns: `72px repeat(${tableHeaders.length}, minmax(140px, 1fr)) 44px` }}>
+                      <div className="table-corner" />
+                      {tableHeaders.map((header, index) => (
+                        <input key={index} value={header} onChange={(event) => updateTableHeader(index, event.target.value)} placeholder={`heading ${index + 1}`} />
+                      ))}
+                      <div />
+                    </div>
+                    <div className="answer-table-body" style={{ gridTemplateColumns: `72px repeat(${tableHeaders.length}, minmax(140px, 1fr)) 44px` }}>
+                      {options.flatMap((option) => [
+                        <button className={`answer-row-select ${correctOption === option.label ? "correct" : ""}`} key={`${option.label}-select`} onClick={() => setCorrectOption(option.label)}>{option.label}</button>,
+                        ...tableHeaders.map((_, index) => <input key={`${option.label}-${index}`} value={tableRows[option.label]?.[index] ?? ""} onChange={(event) => updateTableCell(option.label, index, event.target.value)} placeholder="cell value" />),
+                        <button className="icon-button danger-icon" disabled={options.length <= 2} key={`${option.label}-delete`} onClick={() => removeOption(options.findIndex((item) => item.label === option.label))}><Trash2 size={15} /></button>,
+                      ])}
+                    </div>
+                    <div className="table-column-removers" style={{ gridTemplateColumns: `72px repeat(${tableHeaders.length}, minmax(140px, 1fr)) 44px` }}>
+                      <span />
+                      {tableHeaders.map((_, index) => <button className="mini-step-button" disabled={tableHeaders.length <= 1} key={index} onClick={() => removeTableColumn(index)}>Remove</button>)}
+                      <span />
+                    </div>
                   </div>
                   <button className="secondary-action" onClick={addOption}><Plus size={16} />Add option row</button>
                 </div>
@@ -976,17 +1096,17 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
               <div className="option-entry-grid">
                 <label className="field-stack"><span>Subject</span><input value={subject} onChange={(event) => setSubject(event.target.value)} /></label>
                 <label className="field-stack"><span>Syllabus</span><input value={syllabus} onChange={(event) => setSyllabus(event.target.value)} /></label>
-                <label className="field-stack"><span>Exam code</span><input value={examCode} onChange={(event) => setExamCode(event.target.value)} placeholder="9702_w23_qp_11" /></label>
+                <label className="field-stack"><span>Exam code</span><input value={examCode} onBlur={applyExamCodeDefaults} onChange={(event) => setExamCode(event.target.value)} placeholder="9702_w23_qp_11" /></label>
                 <label className="field-stack"><span>Paper code</span><input value={paperCode} onChange={(event) => setPaperCode(event.target.value)} placeholder="Paper 1" /></label>
                 <label className="field-stack"><span>Session</span><input value={session} onChange={(event) => setSession(event.target.value)} placeholder="Oct/Nov" /></label>
                 <label className="field-stack"><span>Year</span><input value={year} onChange={(event) => setYear(event.target.value)} placeholder="2023" /></label>
                 <label className="field-stack"><span>Source</span><input value={source} onChange={(event) => setSource(event.target.value)} placeholder="Manual / Cambridge / worksheet" /></label>
                 <label className="field-stack"><span>Original question</span><input value={sourceQuestionNumber} onChange={(event) => setSourceQuestionNumber(event.target.value)} placeholder="Q12" /></label>
-                <label className="field-stack"><span>Difficulty</span><input value={difficulty} onChange={(event) => setDifficulty(event.target.value)} placeholder="Easy / Medium / Hard" /></label>
+                <label className="field-stack"><span>Difficulty</span><select value={difficulty} onChange={(event) => setDifficulty(event.target.value)}>{difficultyOptions.map((item) => <option key={item} value={item}>{item}</option>)}</select></label>
               </div>
-              <div className="metadata-picker"><strong>Topics</strong><div className="quick-add-row"><input value={newTopicName} onChange={(event) => setNewTopicName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void saveQuickTopic(); }} placeholder="Add a new topic, e.g. Kinematics" /><button className="secondary-action" type="button" onClick={() => void saveQuickTopic()}><Plus size={15} />Add topic</button></div>{metadata?.topics.length ? <div className="checkbox-chip-grid">{metadata.topics.map((topic) => <button className={topicIds.includes(topic.id) ? "active" : ""} key={topic.id} type="button" onClick={() => toggleNumberValue(topic.id, topicIds, setTopicIds)}><Check size={14} />{topic.name}</button>)}</div> : <span className="empty-inline-note">No MCQ topics yet. Add the first topic above.</span>}</div>
+              {renderMetadataPicker("topics", "Topics", newTopicName, setNewTopicName, metadata?.topics ?? [], topicIds, setTopicIds, saveQuickTopic, "Type to search or add a topic")}
               {visibleSubtopics.length ? <div className="metadata-picker"><strong>Subtopics</strong><div className="checkbox-chip-grid">{visibleSubtopics.map((subtopic) => <button className={subtopicIds.includes(subtopic.id) ? "active" : ""} key={subtopic.id} type="button" onClick={() => toggleNumberValue(subtopic.id, subtopicIds, setSubtopicIds)}><Check size={14} />{subtopic.name}</button>)}</div></div> : null}
-              <div className="metadata-picker"><strong>Tags</strong><div className="quick-add-row"><input value={newTagName} onChange={(event) => setNewTagName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void saveQuickTag(); }} placeholder="Add a reusable tag, e.g. graph" /><button className="secondary-action" type="button" onClick={() => void saveQuickTag()}><Plus size={15} />Add tag</button></div>{metadata?.tags.length ? <div className="checkbox-chip-grid">{metadata.tags.map((tag) => <button className={tagIds.includes(tag.id) ? "active" : ""} key={tag.id} type="button" onClick={() => toggleNumberValue(tag.id, tagIds, setTagIds)}><Check size={14} />{tag.name}</button>)}</div> : <span className="empty-inline-note">No MCQ tags yet. Add one above if needed.</span>}</div>
+              {renderMetadataPicker("tags", "Tags", newTagName, setNewTagName, metadata?.tags ?? [], tagIds, setTagIds, saveQuickTag, "Type to search or add a tag")}
               <label className="field-stack"><span>Teacher notes</span><textarea value={teacherNotes} onChange={(event) => setTeacherNotes(event.target.value)} placeholder="Private notes for review, source details, or teaching remarks." /></label>
             </div>
           ) : null}
