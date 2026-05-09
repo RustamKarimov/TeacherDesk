@@ -4506,7 +4506,7 @@ td,
 }
 
 .workbench.mcq-bank-workbench {
-  grid-template-columns: minmax(0, 1fr) minmax(360px, 440px);
+  grid-template-columns: minmax(0, 1fr) minmax(430px, 520px);
   align-items: start;
 }
 
@@ -4537,6 +4537,14 @@ td,
   gap: 10px;
   align-items: center;
   margin-bottom: 14px;
+}
+
+.mcq-bank-filters .search-field {
+  flex: 1 1 320px;
+}
+
+.mcq-bank-filters select {
+  flex: 0 1 160px;
 }
 
 .filters-toolbar select,
@@ -4596,6 +4604,11 @@ td,
   color: var(--muted, #6b778c);
 }
 
+.compact-action {
+  min-height: 36px;
+  padding: 0 12px;
+}
+
 .mcq-table {
   display: grid;
   border: 1px solid var(--line, #d8e1eb);
@@ -4652,11 +4665,29 @@ td,
   font-size: 12px;
 }
 
+.chip-wrap em.tag-chip {
+  background: color-mix(in srgb, #8b5cf6 18%, transparent);
+  color: #a78bfa;
+}
+
 .content-icons,
 .row-actions {
   display: flex;
+  align-items: center;
   gap: 7px;
   color: var(--muted, #6b778c);
+}
+
+.row-actions .icon-button {
+  width: 32px;
+  height: 32px;
+}
+
+.preview-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
 }
 
 .a4-preview-card {
@@ -4683,6 +4714,16 @@ td,
   scrollbar-gutter: stable;
   scrollbar-width: thin;
   scrollbar-color: color-mix(in srgb, var(--primary, #14b8a6) 55%, #64748b) transparent;
+}
+
+.bank-preview-viewport {
+  max-height: calc(100vh - 260px);
+  min-height: 520px;
+  margin: 12px -4px;
+}
+
+.bank-a4-scale {
+  --a4-scale: 0.47;
 }
 
 .mcq-editor-panel ::-webkit-scrollbar,
@@ -4821,6 +4862,18 @@ td,
   margin-right: 5px;
 }
 
+.option-media-middle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  vertical-align: middle;
+}
+
+.option-media-middle > span {
+  min-width: 0;
+}
+
 .option-preview-grid > span.correct {
   background: transparent;
 }
@@ -4950,6 +5003,11 @@ td,
   margin: 6px auto;
 }
 
+.option-media-middle .a4-option-image {
+  margin: 0;
+  max-width: 45%;
+}
+
 .a4-option-image.fit-cover {
   height: 120px;
   object-fit: cover;
@@ -4981,6 +5039,23 @@ td,
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.rows-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted, #6b778c);
+  font-weight: 750;
+}
+
+.rows-select select {
+  min-height: 34px;
+  border: 1px solid var(--line, #d8e1eb);
+  border-radius: 8px;
+  background: var(--field-bg, var(--input-bg, #ffffff));
+  color: var(--text, #172033);
+  padding: 0 8px;
 }
 
 .metadata-mini span {

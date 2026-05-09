@@ -1,4 +1,4 @@
-import { AlignCenter, AlignLeft, AlignRight, Bold, Check, Heading2, Image, ImageDown, ImageUp, Italic, List, ListOrdered, Maximize2, Plus, Redo2, Save, Scan, Sigma, StretchHorizontal, StretchVertical, Table2, Trash2, Underline, Undo2, UploadCloud } from "lucide-react";
+import { AlignCenter, AlignLeft, AlignRight, AlignVerticalJustifyCenter, AlignVerticalJustifyEnd, AlignVerticalJustifyStart, Bold, Check, Heading2, Image, Italic, List, ListOrdered, Plus, Redo2, Save, Scaling, Sigma, StretchHorizontal, StretchVertical, Table2, Trash2, Underline, Undo2, UploadCloud } from "lucide-react";
 import { EditorContent, type JSONContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import TiptapImage from "@tiptap/extension-image";
@@ -22,7 +22,7 @@ type ContentBlockType = "text" | "image" | "equation" | "table" | "note";
 type ContentBlockDraft = { id: string; block_type: ContentBlockType; text: string; assetId: number | null; tableText: string };
 type OptionDraft = { label: string; text: string; equation: string; assetId: number | null; imageWidth: number; imageFit: "contain" | "cover" };
 type ImageAlign = "left" | "center" | "right";
-type OptionImagePlacement = "top" | "bottom";
+type OptionImagePlacement = "top" | "middle" | "bottom";
 type OptionImageSizing = "individual" | "same_height" | "same_width" | "same_size";
 type LastMetadataDefaults = {
   subject: string;
@@ -492,7 +492,11 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
     setLayoutPreset(question.layout_preset || "standard");
     setOptionLayout(question.option_layout || "single");
     const optionImageLayoutSettings = question.layout_settings?.option_image_layout;
-    setOptionImagePlacement(optionImageLayoutSettings?.placement === "bottom" ? "bottom" : "top");
+    setOptionImagePlacement(
+      ["top", "middle", "bottom"].includes(String(optionImageLayoutSettings?.placement))
+        ? optionImageLayoutSettings?.placement as OptionImagePlacement
+        : "top",
+    );
     setOptionImageSizing(
       ["same_height", "same_width", "same_size"].includes(String(optionImageLayoutSettings?.sizing))
         ? optionImageLayoutSettings?.sizing as OptionImageSizing
@@ -1059,12 +1063,17 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
     const asset = assets.find((item) => item.id === option.assetId);
     const cleanEquation = option.equation.trim().replace(/^\${1,2}|\${1,2}$/g, "");
     const image = asset ? <img className={`a4-option-image fit-${option.imageFit}`} src={`${API_BASE}${asset.preview_url}`} alt={`${option.label} option`} style={{ width: `${option.imageWidth}%` }} /> : null;
+    const content = (
+      <>
+        {option.text ? <span className="option-text-fragment">{renderMathText(option.text)}</span> : null}
+        {cleanEquation ? <LatexMath latex={cleanEquation} /> : null}
+      </>
+    );
     return (
       <>
         <b>{option.label}.</b>
         {optionImagePlacement === "top" ? image : null}
-        {option.text ? <span className="option-text-fragment">{renderMathText(option.text)}</span> : null}
-        {cleanEquation ? <LatexMath latex={cleanEquation} /> : null}
+        {optionImagePlacement === "middle" && image ? <span className="option-media-middle">{image}<span>{content}</span></span> : content}
         {optionImagePlacement === "bottom" ? image : null}
         {!option.text && !cleanEquation && !asset ? <span className="option-text-fragment">Answer option</span> : null}
       </>
@@ -1245,13 +1254,14 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
               <div className="option-layout-card-grid compact-option-layouts">{optionLayoutVisuals.map((item) => <button className={`option-layout-card ${optionLayout === item.value ? "active" : ""}`} key={item.value} onClick={() => { setOptionLayout(item.value); setLayoutPreset(item.value === "table" ? "table_options" : item.value === "grid" ? "option_grid" : "standard"); }} type="button"><span className={`option-layout-thumbnail ${item.className}`}><i /><i /><i /><i /></span><strong>{item.title}</strong></button>)}</div>
               {optionLayout !== "table" ? (
                 <div className="option-image-toolbar" aria-label="Option image layout controls">
-                  <button className={optionImagePlacement === "top" ? "active" : ""} type="button" onClick={() => setOptionImagePlacement("top")} title="Place option images above option text" aria-label="Place option images above option text"><ImageUp size={17} /></button>
-                  <button className={optionImagePlacement === "bottom" ? "active" : ""} type="button" onClick={() => setOptionImagePlacement("bottom")} title="Place option images below option text" aria-label="Place option images below option text"><ImageDown size={17} /></button>
+                  <button className={optionImagePlacement === "top" ? "active" : ""} type="button" onClick={() => setOptionImagePlacement("top")} title="Align option images to the top" aria-label="Align option images to the top"><AlignVerticalJustifyStart size={17} /></button>
+                  <button className={optionImagePlacement === "middle" ? "active" : ""} type="button" onClick={() => setOptionImagePlacement("middle")} title="Align option images through the middle" aria-label="Align option images through the middle"><AlignVerticalJustifyCenter size={17} /></button>
+                  <button className={optionImagePlacement === "bottom" ? "active" : ""} type="button" onClick={() => setOptionImagePlacement("bottom")} title="Align option images to the bottom" aria-label="Align option images to the bottom"><AlignVerticalJustifyEnd size={17} /></button>
                   <span className="option-image-toolbar-divider" aria-hidden="true" />
-                  <button className={optionImageSizing === "individual" ? "active" : ""} type="button" onClick={() => setOptionImageSizing("individual")} title="Keep each option image at its own size" aria-label="Keep each option image at its own size"><Scan size={17} /></button>
+                  <button className={optionImageSizing === "individual" ? "active" : ""} type="button" onClick={() => setOptionImageSizing("individual")} title="Keep each option image at its own size" aria-label="Keep each option image at its own size"><Image size={17} /></button>
                   <button className={optionImageSizing === "same_height" ? "active" : ""} type="button" onClick={() => setOptionImageSizing("same_height")} title="Make option images the same height" aria-label="Make option images the same height"><StretchVertical size={17} /></button>
                   <button className={optionImageSizing === "same_width" ? "active" : ""} type="button" onClick={() => setOptionImageSizing("same_width")} title="Make option images the same width" aria-label="Make option images the same width"><StretchHorizontal size={17} /></button>
-                  <button className={optionImageSizing === "same_size" ? "active" : ""} type="button" onClick={() => setOptionImageSizing("same_size")} title="Make option images similar size" aria-label="Make option images similar size"><Maximize2 size={17} /></button>
+                  <button className={optionImageSizing === "same_size" ? "active" : ""} type="button" onClick={() => setOptionImageSizing("same_size")} title="Make option images similar size" aria-label="Make option images similar size"><Scaling size={17} /></button>
                 </div>
               ) : null}
               {optionLayout === "table" ? (
