@@ -4554,6 +4554,10 @@ td,
   grid-template-columns: repeat(3, minmax(150px, 1fr)) auto;
 }
 
+.mcq-filter-row-tertiary {
+  grid-template-columns: minmax(120px, 0.5fr) minmax(160px, 0.75fr) minmax(220px, 1.25fr);
+}
+
 .mcq-bank-filters select,
 .multi-filter {
   flex: 0 1 160px;
@@ -4743,9 +4747,14 @@ td,
 }
 
 .multi-filter-trigger::after {
-  content: "v";
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
   color: var(--muted, #6b778c);
-  font-size: 12px;
+  flex: 0 0 auto;
+  transform: translateY(-2px) rotate(45deg);
 }
 
 .multi-filter.open .multi-filter-trigger {
@@ -5121,6 +5130,140 @@ td,
 .preview-mode-toggle button.active {
   background: color-mix(in srgb, var(--teal, #14b8a6) 18%, transparent);
   color: var(--teal, #14b8a6);
+}
+
+.mcq-generator-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 0.38fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.mcq-generator-main,
+.mcq-output-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.mcq-generator-card {
+  display: grid;
+  gap: 14px;
+  border: 1px solid var(--line, #d8e1eb);
+  border-radius: 8px;
+  background: var(--panel-bg-soft, #f8fafc);
+  padding: 14px;
+}
+
+.mcq-generator-fields {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(110px, 0.35fr) minmax(220px, 0.75fr);
+  gap: 12px;
+}
+
+.mode-card-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.mode-card-grid button {
+  display: grid;
+  gap: 7px;
+  min-height: 118px;
+  border: 1px solid var(--line, #d8e1eb);
+  border-radius: 8px;
+  background: var(--field-bg, var(--input-bg, #ffffff));
+  color: var(--text, #172033);
+  cursor: pointer;
+  padding: 14px;
+  text-align: left;
+}
+
+.mode-card-grid button svg {
+  color: var(--teal, #14b8a6);
+}
+
+.mode-card-grid button span {
+  color: var(--muted, #6b778c);
+  line-height: 1.35;
+}
+
+.mode-card-grid button.active {
+  border-color: var(--teal, #14b8a6);
+  background: color-mix(in srgb, var(--teal, #14b8a6) 14%, var(--panel-bg));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--teal, #14b8a6) 45%, transparent);
+}
+
+.topic-pick-panel {
+  display: grid;
+  gap: 10px;
+  border-top: 1px solid var(--line, #d8e1eb);
+  padding-top: 12px;
+}
+
+.chip-selector {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.chip-selector button {
+  border: 1px solid var(--line, #d8e1eb);
+  border-radius: 999px;
+  background: var(--field-bg, var(--input-bg, #ffffff));
+  color: var(--muted, #6b778c);
+  cursor: pointer;
+  font-weight: 800;
+  padding: 7px 11px;
+}
+
+.chip-selector button.active {
+  border-color: var(--teal, #14b8a6);
+  background: color-mix(in srgb, var(--teal, #14b8a6) 18%, transparent);
+  color: var(--teal, #14b8a6);
+}
+
+.generator-question-list {
+  display: grid;
+  gap: 8px;
+}
+
+.generator-question-row {
+  display: grid;
+  grid-template-columns: 34px minmax(190px, 1.2fr) minmax(150px, 1fr) 78px 40px;
+  gap: 10px;
+  align-items: center;
+  border: 1px solid var(--line, #d8e1eb);
+  border-radius: 8px;
+  background: var(--field-bg, var(--input-bg, #ffffff));
+  padding: 10px;
+}
+
+.generator-question-row small {
+  display: block;
+  color: var(--muted, #6b778c);
+}
+
+.order-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--teal, #14b8a6) 16%, transparent);
+  color: var(--teal, #14b8a6);
+  font-weight: 900;
+}
+
+.output-action-stack {
+  display: grid;
+  gap: 10px;
+}
+
+.output-action-stack .primary-action,
+.output-action-stack .secondary-action {
+  width: 100%;
 }
 
 .a4-preview-card {

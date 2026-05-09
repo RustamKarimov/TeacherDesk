@@ -272,18 +272,22 @@ export type MCQReviewStatus = "draft" | "ready" | "needs_review" | "verified" | 
 export type MCQMetadataPayload = {
   topics: Array<{
     id: number;
+    uuid: string;
     name: string;
     description: string;
     color: string;
     is_active: boolean;
     question_count: number;
-    subtopics: Array<{ id: number; name: string }>;
+    subtopics: Array<{ id: number; uuid: string; name: string; topic_id?: number; topic_name?: string; question_count?: number }>;
   }>;
-  tags: Array<{ id: number; name: string }>;
+  tags: Array<{ id: number; uuid?: string; name: string }>;
   difficulties: string[];
   review_statuses: Array<{ value: MCQReviewStatus; label: string }>;
   layout_presets: Array<{ value: string; label: string }>;
   option_layouts: Array<{ value: string; label: string }>;
+  exam_codes: string[];
+  sessions: string[];
+  years: number[];
 };
 
 export type MCQAsset = {

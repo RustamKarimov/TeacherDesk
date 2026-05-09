@@ -277,7 +277,15 @@ function SingleSelectFilter({
   );
 }
 
-export function MCQQuestionBankView({ onAddQuestion, onEditQuestion }: { onAddQuestion: () => void; onEditQuestion: (questionId: number) => void }) {
+export function MCQQuestionBankView({
+  onAddQuestion,
+  onEditQuestion,
+  onAddToExam,
+}: {
+  onAddQuestion: () => void;
+  onEditQuestion: (questionId: number) => void;
+  onAddToExam?: (questionIds: number[]) => void;
+}) {
   const [rows, setRows] = useState<MCQQuestionRow[]>([]);
   const [metadata, setMetadata] = useState<MCQMetadataPayload | null>(null);
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -287,6 +295,9 @@ export function MCQQuestionBankView({ onAddQuestion, onEditQuestion }: { onAddQu
   const [difficulty, setDifficulty] = useState("");
   const [reviewStatus, setReviewStatus] = useState("");
   const [contentType, setContentType] = useState("");
+  const [year, setYear] = useState("");
+  const [session, setSession] = useState("");
+  const [examCode, setExamCode] = useState("");
   const [selectedQuestionIds, setSelectedQuestionIds] = useState<number[]>([]);
   const [examBasketIds, setExamBasketIds] = useState<number[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
@@ -321,6 +332,9 @@ export function MCQQuestionBankView({ onAddQuestion, onEditQuestion }: { onAddQu
     if (difficulty) params.set("difficulty", difficulty);
     if (reviewStatus) params.set("review_status", reviewStatus);
     if (contentType) params.set("content_type", contentType);
+    if (year) params.set("year", year);
+    if (session) params.set("session", session);
+    if (examCode) params.set("exam_code", examCode);
     fetch(`${API_BASE}/api/mcq/questions/?${params.toString()}`)
       .then((response) => readJson<MCQQuestionListPayload>(response))
       .then((payload) => {
@@ -330,7 +344,7 @@ export function MCQQuestionBankView({ onAddQuestion, onEditQuestion }: { onAddQu
         setSelectedId((current) => payload.results.some((item) => item.id === current) ? current : payload.results[0]?.id ?? null);
       })
       .catch((caught) => setError(caught instanceof Error ? caught.message : "Could not load MCQ questions."));
-  }, [search, topicIds, tagIds, difficulty, reviewStatus, contentType, page, pageSize, reloadToken]);
+  }, [search, topicIds, tagIds, difficulty, reviewStatus, contentType, year, session, examCode, page, pageSize, reloadToken]);
 
   useEffect(() => {
     if (!selected?.id) {
@@ -350,6 +364,9 @@ export function MCQQuestionBankView({ onAddQuestion, onEditQuestion }: { onAddQu
     setDifficulty("");
     setReviewStatus("");
     setContentType("");
+    setYear("");
+    setSession("");
+    setExamCode("");
     setPage(1);
   }
 
@@ -366,6 +383,7 @@ export function MCQQuestionBankView({ onAddQuestion, onEditQuestion }: { onAddQu
   function addSelectedToExam() {
     const ids = selectedQuestionIds.length ? selectedQuestionIds : selected ? [selected.id] : [];
     setExamBasketIds((current) => [...new Set([...current, ...ids])]);
+    onAddToExam?.(ids);
     setNotice(`${ids.length} question${ids.length === 1 ? "" : "s"} added to the MCQ exam basket.`);
   }
 
@@ -476,6 +494,26 @@ export function MCQQuestionBankView({ onAddQuestion, onEditQuestion }: { onAddQu
                 options={[{ value: "", label: "Any review status" }, ...(metadata?.review_statuses ?? []).map((item) => ({ value: item.value, label: item.label }))]}
               />
               <button className="secondary-action compact-action" type="button" onClick={resetFilters}>Clear</button>
+            </div>
+            <div className="mcq-filter-row mcq-filter-row-tertiary">
+              <SingleSelectFilter
+                label="Year"
+                value={year}
+                onChange={(next) => { setYear(next); setPage(1); }}
+                options={[{ value: "", label: "Any year" }, ...(metadata?.years ?? []).map((item) => ({ value: String(item), label: String(item) }))]}
+              />
+              <SingleSelectFilter
+                label="Session"
+                value={session}
+                onChange={(next) => { setSession(next); setPage(1); }}
+                options={[{ value: "", label: "Any session" }, ...(metadata?.sessions ?? []).map((item) => ({ value: item, label: item }))]}
+              />
+              <SingleSelectFilter
+                label="Exam code"
+                value={examCode}
+                onChange={(next) => { setExamCode(next); setPage(1); }}
+                options={[{ value: "", label: "Any exam code" }, ...(metadata?.exam_codes ?? []).map((item) => ({ value: item, label: item }))]}
+              />
             </div>
           </div>
 

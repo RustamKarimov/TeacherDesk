@@ -262,6 +262,9 @@ def questions(request):
     difficulty = request.GET.get("difficulty", "").strip()
     review_status = request.GET.get("review_status", "").strip()
     content_type = request.GET.get("content_type", "").strip()
+    exam_code = request.GET.get("exam_code", "").strip()
+    session = request.GET.get("session", "").strip()
+    year = request.GET.get("year", "").strip()
     try:
         page = max(int(request.GET.get("page") or 1), 1)
         page_size = min(max(int(request.GET.get("page_size") or 10), 10), 100)
@@ -291,6 +294,15 @@ def questions(request):
         queryset = queryset.filter(difficulty=difficulty)
     if review_status:
         queryset = queryset.filter(review_status=review_status)
+    if exam_code:
+        queryset = queryset.filter(exam_code=exam_code)
+    if session:
+        queryset = queryset.filter(session=session)
+    if year:
+        try:
+            queryset = queryset.filter(year=int(year))
+        except ValueError:
+            return JsonResponse({"error": "year must be a whole number."}, status=400)
     if content_type == "image":
         queryset = queryset.filter(Q(blocks__asset__isnull=False) | Q(options__blocks__asset__isnull=False))
     elif content_type == "table":
@@ -341,6 +353,26 @@ def metadata(request):
             "review_statuses": [{"value": value, "label": label} for value, label in MCQQuestion.ReviewStatus.choices],
             "layout_presets": [{"value": value, "label": label} for value, label in MCQQuestion.LayoutPreset.choices],
             "option_layouts": [{"value": value, "label": label} for value, label in MCQQuestion.OptionLayout.choices],
+            "exam_codes": list(
+                MCQQuestion.objects.filter(library=library)
+                .exclude(exam_code="")
+                .order_by("exam_code")
+                .values_list("exam_code", flat=True)
+                .distinct()
+            ),
+            "sessions": list(
+                MCQQuestion.objects.filter(library=library)
+                .exclude(session="")
+                .order_by("session")
+                .values_list("session", flat=True)
+                .distinct()
+            ),
+            "years": list(
+                MCQQuestion.objects.filter(library=library, year__isnull=False)
+                .order_by("-year")
+                .values_list("year", flat=True)
+                .distinct()
+            ),
         }
     )
 

@@ -51,6 +51,7 @@ export function App() {
   const [globalSearch, setGlobalSearch] = useState("");
   const [questionBankSearch, setQuestionBankSearch] = useState("");
   const [manualExamQuestionIds, setManualExamQuestionIds] = useState<number[]>([]);
+  const [manualMcqExamQuestionIds, setManualMcqExamQuestionIds] = useState<number[]>([]);
   const [editingMcqQuestionId, setEditingMcqQuestionId] = useState<number | null>(null);
   const [theme, setTheme] = useState<"dark" | "light">(() => (localStorage.getItem("teacherdesk-theme") === "light" ? "light" : "dark"));
 
@@ -168,6 +169,10 @@ export function App() {
               setEditingMcqQuestionId(questionId);
               setActiveModule("Add MCQ Question");
             }}
+            onAddToExam={(questionIds) => {
+              setManualMcqExamQuestionIds((current) => [...new Set([...current, ...questionIds])]);
+              setActiveModule("MCQ Exam Generator");
+            }}
           />
         ) : null}
         {activeModule === "Add MCQ Question" ? (
@@ -179,7 +184,7 @@ export function App() {
             }}
           />
         ) : null}
-        {activeModule === "MCQ Exam Generator" ? <MCQExamGeneratorView /> : null}
+        {activeModule === "MCQ Exam Generator" ? <MCQExamGeneratorView manualQuestionIds={manualMcqExamQuestionIds} onManualQuestionsConsumed={() => setManualMcqExamQuestionIds([])} /> : null}
         {activeModule === "MCQ Metadata" ? <MCQMetadataView /> : null}
         {activeModule === "Settings" ? <SettingsView /> : null}
       </main>
