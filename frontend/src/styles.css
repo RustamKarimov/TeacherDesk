@@ -4545,9 +4545,13 @@ td,
 
 .mcq-filter-row {
   display: grid;
-  grid-template-columns: minmax(150px, 1fr) minmax(150px, 1fr) minmax(140px, 0.8fr) minmax(140px, 0.8fr) minmax(150px, 0.8fr) auto;
+  grid-template-columns: repeat(2, minmax(180px, 1fr));
   gap: 10px;
   width: 100%;
+}
+
+.mcq-filter-row-secondary {
+  grid-template-columns: repeat(3, minmax(150px, 1fr)) auto;
 }
 
 .mcq-bank-filters select,
@@ -4812,6 +4816,35 @@ td,
   scrollbar-color: color-mix(in srgb, var(--teal, #14b8a6) 45%, #64748b) transparent;
 }
 
+.single-filter-menu {
+  width: 100%;
+  min-width: 180px;
+  overflow: hidden;
+  padding: 6px;
+}
+
+.single-filter-menu button {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 34px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text, #172033);
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 750;
+  padding: 0 10px;
+  text-align: left;
+}
+
+.single-filter-menu button:hover,
+.single-filter-menu button.selected {
+  background: color-mix(in srgb, var(--teal, #14b8a6) 16%, transparent);
+  color: var(--teal, #14b8a6);
+}
+
 .multi-filter-list label {
   min-height: 34px;
   padding: 6px 8px;
@@ -4845,6 +4878,80 @@ td,
   font-weight: 750;
 }
 
+.library-title strong {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.library-title strong span {
+  display: inline;
+  color: var(--muted, #6b778c);
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.library-action-row {
+  display: flex;
+  flex: 1 1 520px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.library-action-left,
+.library-action-right {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.library-action-left > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--muted, #6b778c);
+  font-weight: 750;
+}
+
+.toolbar-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border: 1px solid var(--line, #d8e1eb);
+  border-radius: 8px;
+  background: var(--field-bg, var(--input-bg, #ffffff));
+  color: var(--text, #172033);
+  cursor: pointer;
+  transition: border-color 140ms ease, background 140ms ease, color 140ms ease, box-shadow 140ms ease, transform 140ms ease;
+}
+
+.toolbar-icon-button:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--teal, #14b8a6) 65%, var(--line, #d8e1eb));
+  background: color-mix(in srgb, var(--teal, #14b8a6) 14%, transparent);
+  color: var(--teal, #14b8a6);
+  transform: translateY(-1px);
+}
+
+.toolbar-icon-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.toolbar-icon-button.danger-icon {
+  color: #f87171;
+}
+
+.toolbar-icon-button.danger-icon:hover:not(:disabled) {
+  border-color: color-mix(in srgb, #ef4444 55%, var(--line, #d8e1eb));
+  background: color-mix(in srgb, #ef4444 12%, transparent);
+  color: #fb7185;
+}
+
 .danger-border {
   border-color: color-mix(in srgb, #ef4444 55%, var(--line, #d8e1eb)) !important;
   color: #f87171 !important;
@@ -4860,7 +4967,7 @@ td,
 .mcq-table-head,
 .mcq-table-row {
   display: grid;
-  grid-template-columns: 32px minmax(230px, 1.45fr) minmax(130px, 0.75fr) minmax(210px, 0.95fr);
+  grid-template-columns: 32px minmax(210px, 1.45fr) minmax(150px, 1fr) 70px 112px;
   gap: 12px;
   align-items: center;
 }
@@ -4884,6 +4991,16 @@ td,
 
 .mcq-table-row.active {
   background: color-mix(in srgb, var(--teal, #14b8a6) 17%, var(--panel-bg));
+}
+
+.mcq-mark-cell {
+  color: var(--text, #172033);
+  font-weight: 850;
+}
+
+.mcq-status-cell {
+  display: flex;
+  justify-content: flex-start;
 }
 
 .table-check {
@@ -4994,6 +5111,11 @@ td,
   cursor: pointer;
   font-weight: 850;
   padding: 0 12px;
+}
+
+.preview-mode-toggle.icon-only button {
+  width: 34px;
+  padding: 0;
 }
 
 .preview-mode-toggle button.active {
@@ -6630,12 +6752,8 @@ td,
     grid-template-columns: 1fr;
   }
 
-  .mcq-table {
-    overflow-x: auto;
-  }
-
   .mcq-table-head,
   .mcq-table-row {
-    min-width: 860px;
+    grid-template-columns: 32px minmax(170px, 1.3fr) minmax(120px, 0.9fr) 60px 96px;
   }
 }
