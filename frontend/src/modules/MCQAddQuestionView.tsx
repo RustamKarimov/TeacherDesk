@@ -159,6 +159,7 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
   const [teacherNotes, setTeacherNotes] = useState("");
   const [newTopicName, setNewTopicName] = useState("");
   const [newTagName, setNewTagName] = useState("");
+  const [openEditorMenu, setOpenEditorMenu] = useState<"numbering" | "imageSize" | "imageFit" | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -697,6 +698,11 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
     richEditor?.chain().focus().updateAttributes("image", { "data-fit": fit }).run();
   }
 
+  function applyNumbering(type: string) {
+    richEditor?.chain().focus().toggleOrderedList().updateAttributes("orderedList", { type }).run();
+    setOpenEditorMenu(null);
+  }
+
   async function uploadEditorImage(file: File | null) {
     await uploadAsset(file, "question", (asset) => {
       richEditor?.chain().focus().setImage({ src: `${API_BASE}${asset.preview_url}`, alt: asset.original_name, width: 100 }).updateAttributes("image", { "data-fit": "contain" }).run();
@@ -852,7 +858,10 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
                   <button className={richEditor?.isActive("underline") ? "active" : ""} type="button" onClick={() => richEditor?.chain().focus().toggleUnderline().run()} title="Underline"><Underline size={16} /></button>
                   <button className={richEditor?.isActive("heading", { level: 2 }) ? "active" : ""} type="button" onClick={() => richEditor?.chain().focus().toggleHeading({ level: 2 }).run()} title="Heading"><Heading2 size={16} /></button>
                   <button className={richEditor?.isActive("bulletList") ? "active" : ""} type="button" onClick={() => richEditor?.chain().focus().toggleBulletList().run()} title="Bullet list"><List size={16} /></button>
-                  <label className="rich-icon-select" title="Numbering style"><ListOrdered size={16} /><select defaultValue="" onChange={(event) => { if (event.target.value) richEditor?.chain().focus().toggleOrderedList().updateAttributes("orderedList", { type: event.target.value }).run(); event.target.value = ""; }}><option value="">Numbering</option><option value="1">1, 2, 3</option><option value="a">a, b, c</option><option value="A">A, B, C</option><option value="i">i, ii, iii</option><option value="I">I, II, III</option></select></label>
+                  <div className="toolbar-menu-wrap">
+                    <button className={richEditor?.isActive("orderedList") ? "active" : ""} type="button" onClick={() => setOpenEditorMenu(openEditorMenu === "numbering" ? null : "numbering")} title="Numbering style"><ListOrdered size={16} /></button>
+                    {openEditorMenu === "numbering" ? <div className="toolbar-popover"><button type="button" onClick={() => applyNumbering("1")}>1, 2, 3</button><button type="button" onClick={() => applyNumbering("a")}>a, b, c</button><button type="button" onClick={() => applyNumbering("A")}>A, B, C</button><button type="button" onClick={() => applyNumbering("i")}>i, ii, iii</button><button type="button" onClick={() => applyNumbering("I")}>I, II, III</button></div> : null}
+                  </div>
                   <button type="button" onClick={() => richEditor?.chain().focus().setTextAlign("left").run()} title="Align left"><AlignLeft size={16} /></button>
                   <button type="button" onClick={() => richEditor?.chain().focus().setTextAlign("center").run()} title="Align center"><AlignCenter size={16} /></button>
                   <button type="button" onClick={() => richEditor?.chain().focus().setTextAlign("right").run()} title="Align right"><AlignRight size={16} /></button>
@@ -860,18 +869,14 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
                   <label className="rich-upload-button" title="Insert image"><Image size={16} /><input type="file" accept="image/*" disabled={isUploadingAsset} onChange={(event) => uploadEditorImage(event.target.files?.[0] ?? null)} /></label>
                   <button type="button" onClick={() => richEditor?.chain().focus().undo().run()} title="Undo"><Undo2 size={16} /></button>
                   <button type="button" onClick={() => richEditor?.chain().focus().redo().run()} title="Redo"><Redo2 size={16} /></button>
-                  <select className="rich-toolbar-select" defaultValue="" disabled={!richEditor?.isActive("image")} onChange={(event) => { if (event.target.value) setEditorImageSize(Number(event.target.value)); event.target.value = ""; }} title="Selected image width">
-                    <option value="">Image size</option>
-                    <option value="25">25%</option>
-                    <option value="50">50%</option>
-                    <option value="75">75%</option>
-                    <option value="100">100%</option>
-                  </select>
-                  <select className="rich-toolbar-select" defaultValue="" disabled={!richEditor?.isActive("image")} onChange={(event) => { if (event.target.value === "contain" || event.target.value === "cover") setEditorImageFit(event.target.value); event.target.value = ""; }} title="Selected image crop mode">
-                    <option value="">Image crop</option>
-                    <option value="contain">Fit whole image</option>
-                    <option value="cover">Crop to frame</option>
-                  </select>
+                  <div className="toolbar-menu-wrap">
+                    <button type="button" disabled={!richEditor?.isActive("image")} onClick={() => setOpenEditorMenu(openEditorMenu === "imageSize" ? null : "imageSize")} title="Selected image width">%</button>
+                    {openEditorMenu === "imageSize" ? <div className="toolbar-popover"><button type="button" onClick={() => { setEditorImageSize(25); setOpenEditorMenu(null); }}>25%</button><button type="button" onClick={() => { setEditorImageSize(50); setOpenEditorMenu(null); }}>50%</button><button type="button" onClick={() => { setEditorImageSize(75); setOpenEditorMenu(null); }}>75%</button><button type="button" onClick={() => { setEditorImageSize(100); setOpenEditorMenu(null); }}>100%</button></div> : null}
+                  </div>
+                  <div className="toolbar-menu-wrap">
+                    <button type="button" disabled={!richEditor?.isActive("image")} onClick={() => setOpenEditorMenu(openEditorMenu === "imageFit" ? null : "imageFit")} title="Selected image crop mode"><Image size={16} /></button>
+                    {openEditorMenu === "imageFit" ? <div className="toolbar-popover wide"><button type="button" onClick={() => { setEditorImageFit("contain"); setOpenEditorMenu(null); }}>Fit whole image</button><button type="button" onClick={() => { setEditorImageFit("cover"); setOpenEditorMenu(null); }}>Crop to frame</button></div> : null}
+                  </div>
                 </div>
                 <div className="rich-equation-palette">
                   <span title="Inline equation shortcuts"><Sigma size={15} /></span>
