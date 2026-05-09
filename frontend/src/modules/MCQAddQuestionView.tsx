@@ -9,7 +9,7 @@ import TableRow from "@tiptap/extension-table-row";
 import TextAlign from "@tiptap/extension-text-align";
 import TiptapUnderline from "@tiptap/extension-underline";
 import Placeholder from "@tiptap/extension-placeholder";
-import { type CSSProperties, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { type ClipboardEvent as ReactClipboardEvent, type CSSProperties, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import katex from "katex";
 import "katex/dist/katex.min.css";
 
@@ -113,18 +113,27 @@ const defaultTableRows: Record<string, string[]> = {
 
 const equationSnippets = [
   { label: "a/b", value: "\\frac{a}{b}", title: "Fraction" },
-  { label: "x²", value: "x^{2}", title: "Power" },
-  { label: "xₙ", value: "x_{n}", title: "Subscript" },
-  { label: "√x", value: "\\sqrt{x}", title: "Square root" },
-  { label: "F⃗", value: "\\vec{F}", title: "Vector" },
-  { label: "θ", value: "\\theta", title: "Theta" },
-  { label: "Δ", value: "\\Delta", title: "Delta" },
-  { label: "π", value: "\\pi", title: "Pi" },
-  { label: "Σ", value: "\\sum_{i=1}^{n}", title: "Summation" },
-  { label: "∫", value: "\\int_{a}^{b}", title: "Integral" },
+  { label: "x^2", value: "x^{2}", title: "Power" },
+  { label: "x_n", value: "x_{n}", title: "Subscript" },
+  { label: "sqrt", value: "\\sqrt{x}", title: "Square root" },
+  { label: "vec v", value: "\\vec{v}", title: "Vector" },
+  { label: "theta", value: "\\theta", title: "Theta" },
+  { label: "Delta", value: "\\Delta", title: "Delta" },
+  { label: "pi", value: "\\pi", title: "Pi" },
+  { label: "sum", value: "\\sum_{i=1}^{n}", title: "Summation" },
+  { label: "int", value: "\\int_{a}^{b}", title: "Integral" },
   { label: "lim", value: "\\lim_{x\\to 0}", title: "Limit" },
   { label: "[ ]", value: "\\begin{bmatrix} a & b \\\\ c & d \\end{bmatrix}", title: "Matrix" },
 ];
+
+function clipboardImageFile(event: { clipboardData: DataTransfer | null }): File | null {
+  if (!event.clipboardData) return null;
+  const item = Array.from(event.clipboardData.items).find((entry) => entry.kind === "file" && entry.type.startsWith("image/"));
+  const file = item?.getAsFile();
+  if (!file) return null;
+  const extension = file.type === "image/jpeg" ? "jpg" : file.type === "image/webp" ? "webp" : file.type === "image/gif" ? "gif" : "png";
+  return new File([file], `clipboard-image-${Date.now()}.${extension}`, { type: file.type || "image/png" });
+}
 
 export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: number | null; onSaved: () => void }) {
   const [metadata, setMetadata] = useState<MCQMetadataPayload | null>(null);
@@ -214,6 +223,13 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
     editorProps: {
       attributes: {
         class: "a4-rich-editor-content",
+      },
+      handlePaste: (_view, event) => {
+        const file = clipboardImageFile(event);
+        if (!file) return false;
+        event.preventDefault();
+        void uploadEditorImage(file);
+        return true;
       },
     },
     onUpdate: ({ editor }) => {
@@ -709,6 +725,13 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
     });
   }
 
+  function handleOptionPaste(event: ReactClipboardEvent<HTMLTextAreaElement>, index: number) {
+    const file = clipboardImageFile(event);
+    if (!file) return;
+    event.preventDefault();
+    void uploadAsset(file, "option", (asset) => updateOption(index, { assetId: asset.id }));
+  }
+
   function renderMathText(text: string): ReactNode[] {
     const pieces = text.split(/(\$\$[^$]+\$\$|\$[^$]+\$)/g).filter(Boolean);
     return pieces.map((piece, index) => {
@@ -881,7 +904,7 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
                 <div className="rich-equation-palette">
                   <span title="Inline equation shortcuts"><Sigma size={15} /></span>
                   {equationSnippets.map((snippet) => <button key={snippet.title} type="button" title={snippet.title} onClick={() => insertEditorMath(snippet.value)}>{snippet.label}</button>)}
-                  <button type="button" onClick={() => insertEditorMath("\\frac{mv^2}{r}", true)}>Display</button>
+                  <button type="button" title="Block equation" onClick={() => insertEditorMath("\\frac{mv^2}{r}", true)}>Block eqn</button>
                 </div>
                 <div className="a4-editor-stage" ref={editorScaleRef}>
                   <div className="a4-scale-shell" style={{ "--a4-scale": editorScale } as CSSProperties}>
@@ -931,7 +954,7 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
                   <div className="option-editor-list">{options.map((option, index) => (
                 <div className={`option-editor-card ${correctOption === option.label ? "correct" : ""}`} key={option.label}>
                   <div className="option-card-head"><button className="option-letter" onClick={() => setCorrectOption(option.label)} title="Mark as correct">{option.label}</button><div><strong>{correctOption === option.label ? "Correct answer" : "Answer option"}</strong><span>Text, equation, image, or a combination.</span></div><button className="icon-button" disabled={options.length <= 2} onClick={() => removeOption(index)}><Trash2 size={15} /></button></div>
-                  <textarea value={option.text} onChange={(event) => updateOption(index, { text: event.target.value })} placeholder={`Option ${option.label} text. Inline maths can use $\\frac{1}{2}mv^2$.`} />
+                  <textarea value={option.text} onPaste={(event) => handleOptionPaste(event, index)} onChange={(event) => updateOption(index, { text: event.target.value })} placeholder={`Option ${option.label} text. Inline maths can use $\\frac{1}{2}mv^2$. Paste an image here to attach it.`} />
                   <div className="option-equation-panel">
                     <div className="option-equation-tools"><span><Sigma size={14} /></span>{equationSnippets.slice(0, 8).map((snippet) => <button key={snippet.title} type="button" title={snippet.title} onClick={() => insertIntoOptionEquation(index, snippet.value)}>{snippet.label}</button>)}</div>
                     <input className="option-equation-input" value={option.equation} onChange={(event) => updateOption(index, { equation: event.target.value })} placeholder="Optional separate equation, e.g. E = mc^2" />

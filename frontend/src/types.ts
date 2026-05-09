@@ -288,9 +288,11 @@ export type MCQMetadataPayload = {
 
 export type MCQAsset = {
   id: number;
+  uuid: string;
   asset_type: string;
   asset_type_label: string;
   original_name: string;
+  relative_path: string;
   file_path: string;
   file_size: number | null;
   width: number | null;

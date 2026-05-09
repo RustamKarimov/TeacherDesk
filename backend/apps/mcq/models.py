@@ -1,9 +1,12 @@
+import uuid
+
 from django.db import models
 
 from apps.libraries.models import Library
 
 
 class MCQTopic(models.Model):
+    uuid = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     library = models.ForeignKey(Library, on_delete=models.CASCADE, related_name="mcq_topics")
     name = models.CharField(max_length=160)
     description = models.TextField(blank=True)
@@ -21,6 +24,7 @@ class MCQTopic(models.Model):
 
 
 class MCQSubtopic(models.Model):
+    uuid = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     topic = models.ForeignKey(MCQTopic, on_delete=models.CASCADE, related_name="subtopics")
     name = models.CharField(max_length=180)
     description = models.TextField(blank=True)
@@ -37,6 +41,7 @@ class MCQSubtopic(models.Model):
 
 
 class MCQTag(models.Model):
+    uuid = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     library = models.ForeignKey(Library, on_delete=models.CASCADE, related_name="mcq_tags")
     name = models.CharField(max_length=80)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -56,9 +61,11 @@ class MCQImageAsset(models.Model):
         TABLE_CELL = "table_cell", "Table cell image"
         OTHER = "other", "Other"
 
+    uuid = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     library = models.ForeignKey(Library, on_delete=models.CASCADE, related_name="mcq_assets")
     asset_type = models.CharField(max_length=30, choices=AssetType.choices, default=AssetType.OTHER)
     original_name = models.CharField(max_length=220)
+    relative_path = models.CharField(max_length=500, blank=True)
     file_path = models.CharField(max_length=600)
     width = models.PositiveIntegerField(null=True, blank=True)
     height = models.PositiveIntegerField(null=True, blank=True)
@@ -96,6 +103,7 @@ class MCQQuestion(models.Model):
         GRID = "grid", "Image grid"
         TABLE = "table", "Table"
 
+    uuid = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     library = models.ForeignKey(Library, on_delete=models.CASCADE, related_name="mcq_questions")
     title = models.CharField(max_length=220, blank=True)
     subject = models.CharField(max_length=80, default="Physics")
@@ -113,6 +121,9 @@ class MCQQuestion(models.Model):
     review_status = models.CharField(max_length=30, choices=ReviewStatus.choices, default=ReviewStatus.DRAFT)
     notes = models.TextField(blank=True)
     teacher_notes = models.TextField(blank=True)
+    content_json = models.JSONField(default=dict, blank=True)
+    content_html = models.TextField(blank=True)
+    content_text = models.TextField(blank=True)
     layout_preset = models.CharField(max_length=40, choices=LayoutPreset.choices, default=LayoutPreset.STANDARD)
     option_layout = models.CharField(max_length=40, choices=OptionLayout.choices, default=OptionLayout.SINGLE)
     layout_settings = models.JSONField(default=dict, blank=True)
@@ -138,6 +149,7 @@ class MCQQuestionBlock(models.Model):
         NOTE = "note", "Note"
         MIXED = "mixed", "Mixed"
 
+    uuid = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     question = models.ForeignKey(MCQQuestion, on_delete=models.CASCADE, related_name="blocks")
     block_type = models.CharField(max_length=20, choices=BlockType.choices)
     text = models.TextField(blank=True)
@@ -151,10 +163,14 @@ class MCQQuestionBlock(models.Model):
 
 
 class MCQOption(models.Model):
+    uuid = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     question = models.ForeignKey(MCQQuestion, on_delete=models.CASCADE, related_name="options")
     label = models.CharField(max_length=8)
     is_correct = models.BooleanField(default=False)
     order = models.PositiveIntegerField(default=0)
+    content_json = models.JSONField(default=dict, blank=True)
+    content_html = models.TextField(blank=True)
+    content_text = models.TextField(blank=True)
     layout_settings = models.JSONField(default=dict, blank=True)
 
     class Meta:
@@ -171,6 +187,7 @@ class MCQOptionBlock(models.Model):
         IMAGE = "image", "Image"
         EQUATION = "equation", "Equation"
 
+    uuid = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     option = models.ForeignKey(MCQOption, on_delete=models.CASCADE, related_name="blocks")
     block_type = models.CharField(max_length=20, choices=BlockType.choices)
     text = models.TextField(blank=True)
@@ -188,6 +205,7 @@ class MCQExam(models.Model):
         TOPIC = "topic", "Topic based"
         MANUAL = "manual", "Manual selection"
 
+    uuid = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     library = models.ForeignKey(Library, on_delete=models.CASCADE, related_name="mcq_exams")
     title = models.CharField(max_length=220)
     mode = models.CharField(max_length=30, choices=Mode.choices)
@@ -208,11 +226,14 @@ class MCQExam(models.Model):
 
 
 class MCQExamQuestion(models.Model):
+    uuid = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     exam = models.ForeignKey(MCQExam, on_delete=models.CASCADE, related_name="exam_questions")
     question = models.ForeignKey(MCQQuestion, on_delete=models.CASCADE, related_name="exam_links")
     order = models.PositiveIntegerField(default=0)
     marks = models.PositiveIntegerField(default=1)
     option_order = models.JSONField(default=list, blank=True)
+    correct_option_uuid = models.UUIDField(null=True, blank=True)
+    snapshot = models.JSONField(default=dict, blank=True)
 
     class Meta:
         ordering = ("order", "id")

@@ -3,6 +3,7 @@ import mimetypes
 from pathlib import Path
 from uuid import uuid4
 
+from django.utils import timezone
 from django.db.models import Count, Q
 from django.http import FileResponse, JsonResponse
 from django.urls import path
@@ -26,12 +27,20 @@ from .models import (
 ALLOWED_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
 
 
+def _asset_disk_path(asset: MCQImageAsset) -> Path:
+    if asset.relative_path:
+        return Path(asset.library.root_path) / asset.relative_path
+    return Path(asset.file_path)
+
+
 def _asset_payload(asset: MCQImageAsset) -> dict[str, object]:
     return {
         "id": asset.id,
+        "uuid": str(asset.uuid),
         "asset_type": asset.asset_type,
         "asset_type_label": asset.get_asset_type_display(),
         "original_name": asset.original_name,
+        "relative_path": asset.relative_path,
         "file_path": asset.file_path,
         "file_size": asset.file_size,
         "width": asset.width,
@@ -44,11 +53,12 @@ def _asset_payload(asset: MCQImageAsset) -> dict[str, object]:
 def _topic_payload(topic: MCQTopic) -> dict[str, object]:
     return {
         "id": topic.id,
+        "uuid": str(topic.uuid),
         "name": topic.name,
         "description": topic.description,
         "color": topic.color,
         "is_active": topic.is_active,
-        "subtopics": [{"id": subtopic.id, "name": subtopic.name} for subtopic in topic.subtopics.all()],
+        "subtopics": [{"id": subtopic.id, "uuid": str(subtopic.uuid), "name": subtopic.name} for subtopic in topic.subtopics.all()],
         "question_count": getattr(topic, "question_count", topic.questions.count()),
     }
 
@@ -59,6 +69,7 @@ def _option_payload(option: MCQOption) -> dict[str, object]:
         blocks.append(
             {
                 "id": block.id,
+                "uuid": str(block.uuid),
                 "block_type": block.block_type,
                 "text": block.text,
                 "asset_id": block.asset_id,
@@ -69,18 +80,22 @@ def _option_payload(option: MCQOption) -> dict[str, object]:
         )
     return {
         "id": option.id,
+        "uuid": str(option.uuid),
         "label": option.label,
         "is_correct": option.is_correct,
         "order": option.order,
+        "content_json": option.content_json,
+        "content_html": option.content_html,
+        "content_text": option.content_text,
         "layout_settings": option.layout_settings,
         "blocks": blocks,
     }
 
 
 def _question_payload(question: MCQQuestion, include_detail: bool = False) -> dict[str, object]:
-    topics = list(question.topics.values("id", "name"))
-    subtopics = list(question.subtopics.values("id", "name", "topic_id"))
-    tags = list(question.tags.values("id", "name"))
+    topics = [{"id": topic.id, "uuid": str(topic.uuid), "name": topic.name} for topic in question.topics.all()]
+    subtopics = [{"id": subtopic.id, "uuid": str(subtopic.uuid), "name": subtopic.name, "topic_id": subtopic.topic_id} for subtopic in question.subtopics.all()]
+    tags = [{"id": tag.id, "uuid": str(tag.uuid), "name": tag.name} for tag in question.tags.all()]
     options = list(question.options.all())
     has_images = question.blocks.filter(asset__isnull=False).exists() or MCQOptionBlock.objects.filter(option__question=question, asset__isnull=False).exists()
     has_tables = question.blocks.filter(block_type=MCQQuestionBlock.BlockType.TABLE).exists() or question.option_layout == MCQQuestion.OptionLayout.TABLE
@@ -88,6 +103,7 @@ def _question_payload(question: MCQQuestion, include_detail: bool = False) -> di
     correct_option = next((option.label for option in options if option.is_correct), "")
     payload = {
         "id": question.id,
+        "uuid": str(question.uuid),
         "title": question.title,
         "subject": question.subject,
         "syllabus": question.syllabus,
@@ -121,10 +137,14 @@ def _question_payload(question: MCQQuestion, include_detail: bool = False) -> di
             {
                 "notes": question.notes,
                 "teacher_notes": question.teacher_notes,
+                "content_json": question.content_json,
+                "content_html": question.content_html,
+                "content_text": question.content_text,
                 "layout_settings": question.layout_settings,
                 "blocks": [
                     {
                         "id": block.id,
+                        "uuid": str(block.uuid),
                         "block_type": block.block_type,
                         "text": block.text,
                         "asset_id": block.asset_id,
@@ -165,6 +185,7 @@ def dashboard(request):
             "recent_exams": [
                 {
                     "id": exam.id,
+                    "uuid": str(exam.uuid),
                     "title": exam.title,
                     "mode": exam.mode,
                     "mode_label": exam.get_mode_display(),
@@ -262,7 +283,7 @@ def metadata(request):
     return JsonResponse(
         {
             "topics": [_topic_payload(topic) for topic in topics],
-            "tags": list(MCQTag.objects.filter(library=library).values("id", "name")),
+            "tags": [{"id": tag.id, "uuid": str(tag.uuid), "name": tag.name} for tag in MCQTag.objects.filter(library=library)],
             "difficulties": list(
                 MCQQuestion.objects.filter(library=library)
                 .exclude(difficulty="")
@@ -304,10 +325,13 @@ def upload_asset(request):
     asset_type = request.POST.get("asset_type", MCQImageAsset.AssetType.QUESTION)
     if asset_type not in {choice.value for choice in MCQImageAsset.AssetType}:
         asset_type = MCQImageAsset.AssetType.OTHER
-    asset_root = Path(library.root_path) / "mcq_assets"
+    year_folder = str(timezone.localdate().year)
+    relative_folder = Path("mcq") / "assets" / "images" / year_folder
+    asset_root = Path(library.root_path) / relative_folder
     asset_root.mkdir(parents=True, exist_ok=True)
     safe_name = f"{uuid4().hex}{extension}"
     output_path = asset_root / safe_name
+    relative_path = (relative_folder / safe_name).as_posix()
     with output_path.open("wb") as destination:
         for chunk in uploaded.chunks():
             destination.write(chunk)
@@ -315,6 +339,7 @@ def upload_asset(request):
         library=library,
         asset_type=asset_type,
         original_name=original_name,
+        relative_path=relative_path,
         file_path=str(output_path),
         file_size=output_path.stat().st_size,
     )
@@ -326,9 +351,9 @@ def asset_file(request, asset_id: int):
         asset = MCQImageAsset.objects.get(id=asset_id, library=active_library())
     except MCQImageAsset.DoesNotExist:
         return JsonResponse({"error": "Image asset not found."}, status=404)
-    path = Path(asset.file_path)
+    path = _asset_disk_path(asset)
     if not path.exists():
-        return JsonResponse({"error": f"Image file not found: {asset.file_path}"}, status=404)
+        return JsonResponse({"error": f"Image file not found: {asset.relative_path or asset.file_path}"}, status=404)
     return FileResponse(path.open("rb"), content_type=mimetypes.guess_type(path.name)[0] or "application/octet-stream")
 
 
@@ -511,9 +536,13 @@ def _apply_question_payload(question: MCQQuestion, payload: dict[str, object], v
     question.time_estimate_seconds = payload.get("time_estimate_seconds") or None
     question.difficulty = str(payload.get("difficulty") or "").strip()
     question.review_status = validated["review_status"]
+    layout_settings = payload.get("layout_settings") if isinstance(payload.get("layout_settings"), dict) else {}
+    question.content_json = layout_settings.get("rich_content") if isinstance(layout_settings.get("rich_content"), dict) else {}
+    question.content_html = str(layout_settings.get("rich_html") or "")
+    question.content_text = str(layout_settings.get("rich_text") or "")
     question.layout_preset = validated["layout_preset"]
     question.option_layout = validated["option_layout"]
-    question.layout_settings = payload.get("layout_settings") if isinstance(payload.get("layout_settings"), dict) else {}
+    question.layout_settings = layout_settings
     question.notes = str(payload.get("notes") or "").strip()
     question.teacher_notes = str(payload.get("teacher_notes") or "").strip()
     question.save()
@@ -567,16 +596,17 @@ def _apply_question_payload(question: MCQQuestion, payload: dict[str, object], v
                 "table_headers": [str(header) for header in option_table_headers],
                 "table_cells": [str(cell) for cell in table_cells],
             }
+        option_text = str((payload.get("option_texts") or {}).get(normalized_label, "")).strip()
+        if isinstance(table_cells, list) and not option_text:
+            option_text = " | ".join(str(cell).strip() for cell in table_cells if str(cell).strip())
         option = MCQOption.objects.create(
             question=question,
             label=normalized_label,
             order=index + 1,
             is_correct=normalized_label == correct_label,
+            content_text=option_text,
             layout_settings=layout_settings,
         )
-        option_text = str((payload.get("option_texts") or {}).get(normalized_label, "")).strip()
-        if isinstance(table_cells, list) and not option_text:
-            option_text = " | ".join(str(cell).strip() for cell in table_cells if str(cell).strip())
         option_blocks = (payload.get("option_blocks") or {}).get(normalized_label)
         if isinstance(option_blocks, list):
             block_order = 1
@@ -687,6 +717,9 @@ def duplicate_question(request, question_id: int):
         review_status=MCQQuestion.ReviewStatus.DRAFT,
         notes=source.notes,
         teacher_notes=source.teacher_notes,
+        content_json=source.content_json,
+        content_html=source.content_html,
+        content_text=source.content_text,
         layout_preset=source.layout_preset,
         option_layout=source.option_layout,
         layout_settings=source.layout_settings,
@@ -710,6 +743,9 @@ def duplicate_question(request, question_id: int):
             label=option.label,
             is_correct=option.is_correct,
             order=option.order,
+            content_json=option.content_json,
+            content_html=option.content_html,
+            content_text=option.content_text,
             layout_settings=option.layout_settings,
         )
         for block in option.blocks.all():

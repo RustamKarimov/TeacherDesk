@@ -190,6 +190,8 @@ class MCQApiTests(TestCase):
         asset_payload = upload.json()
         asset = MCQImageAsset.objects.get(id=asset_payload["id"])
         self.assertTrue(Path(asset.file_path).exists())
+        self.assertTrue(asset.relative_path.startswith("mcq"))
+        self.assertEqual(asset_payload["relative_path"], asset.relative_path)
         self.assertEqual(asset.original_name, "circuit.png")
 
         response = self.client.post(
@@ -208,6 +210,7 @@ class MCQApiTests(TestCase):
 
         self.assertEqual(response.status_code, 201)
         question = MCQQuestion.objects.get(title="Image-only circuit question")
+        self.assertEqual(response.json()["uuid"], str(question.uuid))
         self.assertEqual(question.blocks.filter(block_type=MCQQuestionBlock.BlockType.IMAGE, asset=asset).count(), 1)
         list_response = self.client.get("/api/mcq/questions/?content_type=image")
         self.assertEqual(list_response.status_code, 200)
@@ -249,6 +252,8 @@ class MCQApiTests(TestCase):
         self.assertEqual(response.status_code, 201)
         question = MCQQuestion.objects.get(title="Rich editor question")
         self.assertEqual(question.layout_settings["rich_content"], rich_content)
+        self.assertEqual(question.content_json, rich_content)
+        self.assertEqual(question.content_text, "Use $F = ma$.")
 
     def test_create_question_with_option_image(self):
         asset_path = self.test_root / "option_graph.png"
