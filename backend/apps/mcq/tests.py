@@ -55,6 +55,44 @@ class MCQApiTests(TestCase):
         self.assertEqual(question.options.count(), 4)
         self.assertEqual(MCQOption.objects.get(question=question, label="B").is_correct, True)
 
+    def test_create_question_blocks_duplicate_source_until_overwrite(self):
+        MCQQuestion.objects.create(
+            library=self.library,
+            title="Original Q1",
+            exam_code="9702_w23_qp_11",
+            source_question_number="Q1",
+            marks=1,
+        )
+
+        duplicate_payload = {
+            "title": "Replacement Q1",
+            "question_text": "Replacement question text",
+            "marks": 1,
+            "correct_option": "A",
+            "exam_code": "9702_w23_qp_11",
+            "source_question_number": "Q1",
+            "option_texts": {"A": "A", "B": "B", "C": "C", "D": "D"},
+        }
+        blocked = self.client.post(
+            "/api/mcq/questions/create/",
+            data=json.dumps(duplicate_payload),
+            content_type="application/json",
+        )
+
+        self.assertEqual(blocked.status_code, 409)
+        self.assertEqual(blocked.json()["code"], "duplicate_question")
+        self.assertEqual(MCQQuestion.objects.filter(exam_code="9702_w23_qp_11", source_question_number="Q1").count(), 1)
+
+        overwrite = self.client.post(
+            "/api/mcq/questions/create/",
+            data=json.dumps({**duplicate_payload, "duplicate_strategy": "overwrite"}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(overwrite.status_code, 200)
+        self.assertTrue(overwrite.json()["overwritten"])
+        self.assertEqual(MCQQuestion.objects.get(exam_code="9702_w23_qp_11", source_question_number="Q1").title, "Replacement Q1")
+
     def test_question_text_blank_lines_create_separate_paragraph_blocks(self):
         response = self.client.post(
             "/api/mcq/questions/create/",

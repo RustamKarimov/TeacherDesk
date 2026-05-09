@@ -4925,11 +4925,11 @@ td,
 .a4-question-image {
   display: block;
   max-width: 100%;
-  max-height: 260px;
+  max-height: none;
   object-fit: contain;
   margin: 16px auto;
-  border: 1px solid #d5dde8;
-  border-radius: 6px;
+  border: 0;
+  border-radius: 0;
 }
 
 .a4-option-image {
@@ -5489,7 +5489,9 @@ td,
 .rich-equation-palette button,
 .rich-upload-button,
 .rich-toolbar-select,
-.rich-icon-select {
+.rich-icon-select,
+.image-size-control button,
+.image-fit-control button {
   position: relative;
   display: inline-flex;
   align-items: center;
@@ -5550,11 +5552,43 @@ td,
 .rich-equation-palette button:hover,
 .rich-upload-button:hover,
 .rich-editor-toolbar button.active,
+.image-size-control button.active,
+.image-fit-control button.active,
 .rich-toolbar-select:hover,
 .rich-icon-select:hover {
   border-color: var(--teal, #14b8a6);
   background: color-mix(in srgb, var(--teal, #14b8a6) 18%, var(--panel-bg));
   color: var(--text, #172033);
+}
+
+.image-size-control,
+.image-fit-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border-left: 1px solid var(--line, #d8e1eb);
+  padding-left: 8px;
+}
+
+.image-size-control span {
+  color: var(--muted, #6b778c);
+  font-size: 12px;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.image-size-control button,
+.image-fit-control button {
+  min-width: 42px;
+  min-height: 30px;
+  padding: 0 8px;
+  font-size: 12px;
+}
+
+.image-size-control button:disabled,
+.image-fit-control button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
 }
 
 .rich-equation-palette button {
@@ -5652,9 +5686,10 @@ td,
 .a4-rich-editor-content img {
   display: block;
   max-width: 100%;
-  max-height: 340px;
+  max-height: none;
   object-fit: contain;
   margin: 12px auto;
+  cursor: pointer;
 }
 
 .a4-rich-editor-content img[data-fit="cover"],
@@ -5662,6 +5697,19 @@ td,
   height: 180px;
   object-fit: cover;
 }
+
+.a4-rich-editor-content img.ProseMirror-selectednode {
+  outline: 3px solid #14b8a6;
+  outline-offset: 4px;
+  border-radius: 3px;
+}
+
+.a4-rich-editor-content img[width="25"] { width: 25%; }
+.a4-rich-editor-content img[width="40"] { width: 40%; }
+.a4-rich-editor-content img[width="50"] { width: 50%; }
+.a4-rich-editor-content img[width="60"] { width: 60%; }
+.a4-rich-editor-content img[width="75"] { width: 75%; }
+.a4-rich-editor-content img[width="100"] { width: 100%; }
 
 .a4-rich-editor-content table {
   width: 100%;

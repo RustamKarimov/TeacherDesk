@@ -9,6 +9,7 @@ import TableRow from "@tiptap/extension-table-row";
 import TextAlign from "@tiptap/extension-text-align";
 import TiptapUnderline from "@tiptap/extension-underline";
 import Placeholder from "@tiptap/extension-placeholder";
+import { NodeSelection } from "@tiptap/pm/state";
 import { type ClipboardEvent as ReactClipboardEvent, type CSSProperties, type Dispatch, type ReactNode, type SetStateAction, useEffect, useMemo, useRef, useState } from "react";
 import katex from "katex";
 import "katex/dist/katex.min.css";
@@ -179,6 +180,8 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
   const [newTagName, setNewTagName] = useState("");
   const [openMetadataPicker, setOpenMetadataPicker] = useState<"topics" | "tags" | null>(null);
   const [openEditorMenu, setOpenEditorMenu] = useState<"numbering" | "imageSize" | "imageFit" | null>(null);
+  const [selectedImageWidth, setSelectedImageWidth] = useState<number | null>(null);
+  const [selectedImageFit, setSelectedImageFit] = useState<"contain" | "cover" | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -267,11 +270,19 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
         void uploadEditorImage(file);
         return true;
       },
+      handleClickOn: (view, pos, node) => {
+        if (node.type.name !== "image") return false;
+        view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, pos)));
+        return false;
+      },
     },
     onUpdate: ({ editor }) => {
       setRichContent(editor.getJSON());
       setRichHtml(editor.getHTML());
       setRichText(editor.getText({ blockSeparator: "\n" }));
+    },
+    onSelectionUpdate: ({ editor }) => {
+      refreshSelectedImageState(editor);
     },
   });
 
@@ -324,6 +335,18 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
       setRichHtml(richEditor.getHTML());
       setRichText(richEditor.getText({ blockSeparator: "\n" }));
     }
+  }
+
+  function refreshSelectedImageState(editor = richEditor) {
+    if (!editor?.isActive("image")) {
+      setSelectedImageWidth(null);
+      setSelectedImageFit(null);
+      return;
+    }
+    const attrs = editor.getAttributes("image");
+    const width = Number(attrs.width ?? 100);
+    setSelectedImageWidth(Number.isFinite(width) ? width : 100);
+    setSelectedImageFit(attrs["data-fit"] === "cover" ? "cover" : "contain");
   }
 
   function richContentHasContent(content = richContent) {
@@ -682,6 +705,61 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
     return (tableRows[option.label] ?? []).some((cell) => cell.trim());
   }
 
+  function buildQuestionPayload(overwriteDuplicate = false) {
+    const normalizedSourceQuestion = normalizeSourceQuestion(sourceQuestionNumber);
+    return {
+      title: buildAutomaticTitle(),
+      question_blocks: questionPayloadBlocks(),
+      correct_option: correctOption,
+      marks,
+      option_labels: options.map((option) => option.label),
+      option_texts: Object.fromEntries(options.map((option) => [option.label, option.text])),
+      option_asset_ids: Object.fromEntries(options.filter((option) => option.assetId).map((option) => [option.label, option.assetId])),
+      option_blocks: optionPayloadBlocks(),
+      option_table: optionTablePayload(),
+      duplicate_strategy: overwriteDuplicate ? "overwrite" : "cancel",
+      layout_preset: layoutPreset,
+      option_layout: optionLayout,
+      layout_settings: {
+        rich_content: richContent,
+        rich_html: richHtml,
+        rich_text: richText || richPlainText(),
+      },
+      subject,
+      syllabus,
+      exam_code: examCode,
+      paper_code: paperCode,
+      session,
+      year,
+      source,
+      source_question_number: normalizedSourceQuestion,
+      difficulty,
+      review_status: reviewStatus,
+      topic_ids: topicIds,
+      subtopic_ids: subtopicIds,
+      tag_ids: tagIds,
+      notes,
+      teacher_notes: teacherNotes,
+    };
+  }
+
+  async function postQuestionPayload(overwriteDuplicate = false) {
+    const response = await fetch(questionId ? `${API_BASE}/api/mcq/questions/${questionId}/update/` : `${API_BASE}/api/mcq/questions/create/`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(buildQuestionPayload(overwriteDuplicate)),
+    });
+    const text = await response.text();
+    const contentType = response.headers.get("content-type") ?? "";
+    const payload = contentType.includes("application/json") && text ? JSON.parse(text) : null;
+    if (!response.ok) {
+      const message = payload?.error || (text.startsWith("<") ? `Request failed with HTTP ${response.status}. Backend returned an HTML error page.` : text);
+      const duplicate = response.status === 409 && payload?.code === "duplicate_question";
+      throw Object.assign(new Error(message), { duplicate, duplicatePayload: payload });
+    }
+    return payload as MCQQuestionDetailPayload & { overwritten?: boolean };
+  }
+
   async function saveQuestion(stayOnPage = false) {
     setStatus(null);
     setError(null);
@@ -713,49 +791,31 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
     }
     setIsSaving(true);
     try {
-      const response = await fetch(questionId ? `${API_BASE}/api/mcq/questions/${questionId}/update/` : `${API_BASE}/api/mcq/questions/create/`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          title: buildAutomaticTitle(),
-          question_blocks: questionPayloadBlocks(),
-          correct_option: correctOption,
-          marks,
-          option_labels: options.map((option) => option.label),
-          option_texts: Object.fromEntries(options.map((option) => [option.label, option.text])),
-          option_asset_ids: Object.fromEntries(options.filter((option) => option.assetId).map((option) => [option.label, option.assetId])),
-          option_blocks: optionPayloadBlocks(),
-          option_table: optionTablePayload(),
-          layout_preset: layoutPreset,
-          option_layout: optionLayout,
-          layout_settings: {
-            rich_content: richContent,
-            rich_html: richHtml,
-            rich_text: richText || richPlainText(),
-          },
-          subject,
-          syllabus,
-          exam_code: examCode,
-          paper_code: paperCode,
-          session,
-          year,
-          source,
-          source_question_number: normalizedSourceQuestion,
-          difficulty,
-          review_status: reviewStatus,
-          topic_ids: topicIds,
-          subtopic_ids: subtopicIds,
-          tag_ids: tagIds,
-          notes,
-          teacher_notes: teacherNotes,
-        }),
-      });
-      await readJson(response);
+      let savedQuestion = await postQuestionPayload(false);
+      if (savedQuestion?.overwritten) setStatus("Existing question overwritten.");
       rememberMetadataDefaults();
-      setStatus(questionId ? "Question updated." : "Question saved.");
+      setStatus(savedQuestion?.overwritten ? "Existing question overwritten." : questionId ? "Question updated." : "Question saved.");
       if (stayOnPage) resetForm();
       else onSaved();
     } catch (caught) {
+      if (caught instanceof Error && (caught as Error & { duplicate?: boolean }).duplicate) {
+        const overwrite = confirm(`${caught.message}\n\nOverwrite the existing question with this version? Choose Cancel to keep the existing question unchanged.`);
+        if (!overwrite) {
+          setError("Save cancelled. The existing question was kept unchanged.");
+          setStep("metadata");
+          return;
+        }
+        try {
+          const savedQuestion = await postQuestionPayload(true);
+          rememberMetadataDefaults();
+          setStatus(savedQuestion?.overwritten ? "Existing question overwritten." : "Question saved.");
+          if (stayOnPage) resetForm();
+          else onSaved();
+        } catch (retryError) {
+          setError(retryError instanceof Error ? retryError.message : "Could not overwrite the existing question.");
+        }
+        return;
+      }
       setError(caught instanceof Error ? caught.message : "Could not save question.");
     } finally {
       setIsSaving(false);
@@ -809,10 +869,20 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
 
   function setEditorImageSize(width: number) {
     richEditor?.chain().focus().updateAttributes("image", { width }).run();
+    setSelectedImageWidth(width);
+    if (richEditor) {
+      setRichContent(richEditor.getJSON());
+      setRichHtml(richEditor.getHTML());
+    }
   }
 
   function setEditorImageFit(fit: "contain" | "cover") {
     richEditor?.chain().focus().updateAttributes("image", { "data-fit": fit }).run();
+    setSelectedImageFit(fit);
+    if (richEditor) {
+      setRichContent(richEditor.getJSON());
+      setRichHtml(richEditor.getHTML());
+    }
   }
 
   function applyNumbering(type: string) {
@@ -1066,13 +1136,17 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
                   <label className="rich-upload-button" title="Insert image"><Image size={16} /><input type="file" accept="image/*" disabled={isUploadingAsset} onChange={(event) => uploadEditorImage(event.target.files?.[0] ?? null)} /></label>
                   <button type="button" onClick={() => richEditor?.chain().focus().undo().run()} title="Undo"><Undo2 size={16} /></button>
                   <button type="button" onClick={() => richEditor?.chain().focus().redo().run()} title="Redo"><Redo2 size={16} /></button>
-                  <div className="toolbar-menu-wrap">
-                    <button type="button" disabled={!richEditor?.isActive("image")} onClick={() => setOpenEditorMenu(openEditorMenu === "imageSize" ? null : "imageSize")} title="Selected image width">%</button>
-                    {openEditorMenu === "imageSize" ? <div className="toolbar-popover"><button type="button" onClick={() => { setEditorImageSize(25); setOpenEditorMenu(null); }}>25%</button><button type="button" onClick={() => { setEditorImageSize(50); setOpenEditorMenu(null); }}>50%</button><button type="button" onClick={() => { setEditorImageSize(75); setOpenEditorMenu(null); }}>75%</button><button type="button" onClick={() => { setEditorImageSize(100); setOpenEditorMenu(null); }}>100%</button></div> : null}
+                  <div className="image-size-control" title={selectedImageWidth ? "Selected image width" : "Click an image on the A4 canvas to adjust it"}>
+                    <span>Image</span>
+                    {[25, 40, 50, 60, 75, 100].map((width) => (
+                      <button className={selectedImageWidth === width ? "active" : ""} disabled={!selectedImageWidth} key={width} type="button" onClick={() => setEditorImageSize(width)}>
+                        {width}%
+                      </button>
+                    ))}
                   </div>
-                  <div className="toolbar-menu-wrap">
-                    <button type="button" disabled={!richEditor?.isActive("image")} onClick={() => setOpenEditorMenu(openEditorMenu === "imageFit" ? null : "imageFit")} title="Selected image crop mode"><Image size={16} /></button>
-                    {openEditorMenu === "imageFit" ? <div className="toolbar-popover wide"><button type="button" onClick={() => { setEditorImageFit("contain"); setOpenEditorMenu(null); }}>Fit whole image</button><button type="button" onClick={() => { setEditorImageFit("cover"); setOpenEditorMenu(null); }}>Crop to frame</button></div> : null}
+                  <div className="image-fit-control">
+                    <button className={selectedImageFit === "contain" ? "active" : ""} type="button" disabled={!selectedImageWidth} onClick={() => setEditorImageFit("contain")}>Fit</button>
+                    <button className={selectedImageFit === "cover" ? "active" : ""} type="button" disabled={!selectedImageWidth} onClick={() => setEditorImageFit("cover")}>Crop</button>
                   </div>
                 </div>
                 <div className="rich-equation-palette">

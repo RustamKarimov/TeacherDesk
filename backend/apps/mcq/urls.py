@@ -36,6 +36,38 @@ def _normalize_source_question_number(value: object) -> str:
     return f"Q{text}" if text else ""
 
 
+def _duplicate_question_response(existing: MCQQuestion) -> JsonResponse:
+    return JsonResponse(
+        {
+            "error": (
+                f"A question already exists for exam code '{existing.exam_code}' and "
+                f"original question '{existing.source_question_number}'."
+            ),
+            "code": "duplicate_question",
+            "existing": {
+                "id": existing.id,
+                "title": existing.title,
+                "exam_code": existing.exam_code,
+                "source_question_number": existing.source_question_number,
+            },
+        },
+        status=409,
+    )
+
+
+def _find_duplicate_question(library, exam_code: str, source_question_number: str, exclude_id: int | None = None) -> MCQQuestion | None:
+    if not exam_code or not source_question_number:
+        return None
+    queryset = MCQQuestion.objects.filter(
+        library=library,
+        exam_code__iexact=exam_code,
+        source_question_number__iexact=source_question_number,
+    )
+    if exclude_id:
+        queryset = queryset.exclude(id=exclude_id)
+    return queryset.first()
+
+
 def _asset_disk_path(asset: MCQImageAsset) -> Path:
     if asset.relative_path:
         return Path(asset.library.root_path) / asset.relative_path
@@ -668,10 +700,19 @@ def create_question(request):
     content_error = _validate_question_content(payload, library)
     if content_error:
         return content_error
-    question = MCQQuestion(library=library)
+    exam_code = str(payload.get("exam_code") or "").strip()
+    source_question_number = _normalize_source_question_number(payload.get("source_question_number"))
+    duplicate = _find_duplicate_question(library, exam_code, source_question_number)
+    overwrite_duplicate = payload.get("duplicate_strategy") == "overwrite"
+    if duplicate and not overwrite_duplicate:
+        return _duplicate_question_response(duplicate)
+    question = duplicate if duplicate and overwrite_duplicate else MCQQuestion(library=library)
     _apply_question_payload(question, payload, validated)
+    response_payload = _question_payload(question, include_detail=True)
+    if duplicate and overwrite_duplicate:
+        response_payload["overwritten"] = True
 
-    return JsonResponse(_question_payload(question, include_detail=True), status=201)
+    return JsonResponse(response_payload, status=200 if duplicate and overwrite_duplicate else 201)
 
 
 @csrf_exempt
@@ -693,8 +734,20 @@ def update_question(request, question_id: int):
     content_error = _validate_question_content(payload, library)
     if content_error:
         return content_error
-    _apply_question_payload(question, payload, validated)
-    return JsonResponse(_question_payload(question, include_detail=True))
+    exam_code = str(payload.get("exam_code") or "").strip()
+    source_question_number = _normalize_source_question_number(payload.get("source_question_number"))
+    duplicate = _find_duplicate_question(library, exam_code, source_question_number, exclude_id=question.id)
+    overwrite_duplicate = payload.get("duplicate_strategy") == "overwrite"
+    if duplicate and not overwrite_duplicate:
+        return _duplicate_question_response(duplicate)
+    target = duplicate if duplicate and overwrite_duplicate else question
+    _apply_question_payload(target, payload, validated)
+    if duplicate and overwrite_duplicate:
+        question.delete()
+    response_payload = _question_payload(target, include_detail=True)
+    if duplicate and overwrite_duplicate:
+        response_payload["overwritten"] = True
+    return JsonResponse(response_payload)
 
 
 @csrf_exempt
