@@ -590,8 +590,9 @@ def _apply_question_payload(question: MCQQuestion, payload: dict[str, object], v
                 if block.get("asset_id"):
                     asset = MCQImageAsset.objects.filter(id=block.get("asset_id"), library=question.library).first()
                 text_value = str(block.get("text") or "").strip()
+                settings = block.get("settings") if isinstance(block.get("settings"), dict) else {}
                 if text_value or asset:
-                    MCQOptionBlock.objects.create(option=option, block_type=block_type, text=text_value, asset=asset, order=block_order)
+                    MCQOptionBlock.objects.create(option=option, block_type=block_type, text=text_value, asset=asset, order=block_order, settings=settings)
                     block_order += 1
         elif option_text:
             MCQOptionBlock.objects.create(option=option, block_type=MCQOptionBlock.BlockType.TEXT, text=option_text, order=1)
