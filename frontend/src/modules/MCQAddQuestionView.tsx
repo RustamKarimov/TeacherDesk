@@ -9,7 +9,7 @@ import TableRow from "@tiptap/extension-table-row";
 import TextAlign from "@tiptap/extension-text-align";
 import TiptapUnderline from "@tiptap/extension-underline";
 import Placeholder from "@tiptap/extension-placeholder";
-import { type ClipboardEvent as ReactClipboardEvent, type CSSProperties, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { type ClipboardEvent as ReactClipboardEvent, type CSSProperties, type Dispatch, type ReactNode, type SetStateAction, useEffect, useMemo, useRef, useState } from "react";
 import katex from "katex";
 import "katex/dist/katex.min.css";
 
@@ -135,6 +135,15 @@ function clipboardImageFile(event: { clipboardData: DataTransfer | null }): File
   return new File([file], `clipboard-image-${Date.now()}.${extension}`, { type: file.type || "image/png" });
 }
 
+function sourceQuestionDigits(value: string) {
+  return value.trim().replace(/^q[-\s]?/i, "");
+}
+
+function normalizeSourceQuestion(value: string) {
+  const digits = sourceQuestionDigits(value);
+  return digits ? `Q${digits}` : "";
+}
+
 export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: number | null; onSaved: () => void }) {
   const [metadata, setMetadata] = useState<MCQMetadataPayload | null>(null);
   const [step, setStep] = useState<EditorStep>("question");
@@ -175,6 +184,7 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
   const [isSaving, setIsSaving] = useState(false);
   const editorScaleRef = useRef<HTMLDivElement | null>(null);
   const previewScaleRef = useRef<HTMLDivElement | null>(null);
+  const metadataPickerRef = useRef<HTMLDivElement | null>(null);
   const [editorScale, setEditorScale] = useState(1);
   const [previewScale, setPreviewScale] = useState(1);
 
@@ -186,12 +196,13 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
   useEffect(() => {
     const pageWidth = 794;
     const pageHeight = 1123;
-    const observe = (element: HTMLDivElement | null, setter: (value: number) => void, includeHeight = false) => {
+    const observe = (element: HTMLDivElement | null, setter: Dispatch<SetStateAction<number>>, includeHeight = false) => {
       if (!element) return undefined;
       const resize = () => {
         const widthScale = Math.max(Math.min((element.clientWidth - 28) / pageWidth, 1), 0.32);
         const heightScale = includeHeight ? Math.max(Math.min((element.clientHeight - 28) / pageHeight, 1), 0.32) : 1;
-        setter(Math.min(widthScale, heightScale));
+        const nextScale = Math.round(Math.min(widthScale, heightScale) * 1000) / 1000;
+        setter((current) => (Math.abs(current - nextScale) < 0.004 ? current : nextScale));
       };
       const observer = new ResizeObserver(resize);
       observer.observe(element);
@@ -205,6 +216,16 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
       cleanupPreview?.();
     };
   }, [step]);
+
+  useEffect(() => {
+    function closeMetadataPicker(event: MouseEvent) {
+      const target = event.target;
+      if (target instanceof Node && metadataPickerRef.current?.contains(target)) return;
+      setOpenMetadataPicker(null);
+    }
+    document.addEventListener("mousedown", closeMetadataPicker);
+    return () => document.removeEventListener("mousedown", closeMetadataPicker);
+  }, []);
 
   const richEditor = useEditor({
     extensions: [
@@ -396,7 +417,7 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
     setSession(question.session || "");
     setYear(question.year ? String(question.year) : "");
     setSource(question.source || "");
-    setSourceQuestionNumber(question.source_question_number || "");
+    setSourceQuestionNumber(sourceQuestionDigits(question.source_question_number || ""));
     setDifficulty(question.difficulty || "Medium");
     setReviewStatus(question.review_status || "draft");
     setTopicIds(question.topics.map((topic) => topic.id));
@@ -443,7 +464,7 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
   }
 
   function buildAutomaticTitle() {
-    const sourceLabel = [examCode, sourceQuestionNumber].filter(Boolean).join(" ");
+    const sourceLabel = [examCode, normalizeSourceQuestion(sourceQuestionNumber)].filter(Boolean).join(" ");
     if (sourceLabel) return sourceLabel;
     const firstText = richPlainText() || blocks.map((block) => block.text).join(" ").replace(/\s+/g, " ").trim();
     if (firstText) return firstText.slice(0, 90);
@@ -652,7 +673,8 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
       setStep("options");
       return;
     }
-    if (!sourceQuestionNumber.trim() && !confirm("Original question number is empty. This is useful when entering many questions from the same paper. Save anyway?")) {
+    const normalizedSourceQuestion = normalizeSourceQuestion(sourceQuestionNumber);
+    if (!normalizedSourceQuestion && !confirm("Original question number is empty. This is useful when entering many questions from the same paper. Save anyway?")) {
       setStep("metadata");
       return;
     }
@@ -685,7 +707,7 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
           session,
           year,
           source,
-          source_question_number: sourceQuestionNumber,
+          source_question_number: normalizedSourceQuestion,
           difficulty,
           review_status: reviewStatus,
           topic_ids: topicIds,
@@ -1101,12 +1123,14 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
                 <label className="field-stack"><span>Session</span><input value={session} onChange={(event) => setSession(event.target.value)} placeholder="Oct/Nov" /></label>
                 <label className="field-stack"><span>Year</span><input value={year} onChange={(event) => setYear(event.target.value)} placeholder="2023" /></label>
                 <label className="field-stack"><span>Source</span><input value={source} onChange={(event) => setSource(event.target.value)} placeholder="Manual / Cambridge / worksheet" /></label>
-                <label className="field-stack"><span>Original question</span><input value={sourceQuestionNumber} onChange={(event) => setSourceQuestionNumber(event.target.value)} placeholder="Q12" /></label>
+                <label className="field-stack"><span>Original question</span><div className="prefixed-input"><span>Q</span><input value={sourceQuestionNumber} onChange={(event) => setSourceQuestionNumber(sourceQuestionDigits(event.target.value))} placeholder="12" /></div></label>
                 <label className="field-stack"><span>Difficulty</span><select value={difficulty} onChange={(event) => setDifficulty(event.target.value)}>{difficultyOptions.map((item) => <option key={item} value={item}>{item}</option>)}</select></label>
               </div>
+              <div ref={metadataPickerRef} className="metadata-picker-zone">
               {renderMetadataPicker("topics", "Topics", newTopicName, setNewTopicName, metadata?.topics ?? [], topicIds, setTopicIds, saveQuickTopic, "Type to search or add a topic")}
               {visibleSubtopics.length ? <div className="metadata-picker"><strong>Subtopics</strong><div className="checkbox-chip-grid">{visibleSubtopics.map((subtopic) => <button className={subtopicIds.includes(subtopic.id) ? "active" : ""} key={subtopic.id} type="button" onClick={() => toggleNumberValue(subtopic.id, subtopicIds, setSubtopicIds)}><Check size={14} />{subtopic.name}</button>)}</div></div> : null}
               {renderMetadataPicker("tags", "Tags", newTagName, setNewTagName, metadata?.tags ?? [], tagIds, setTagIds, saveQuickTag, "Type to search or add a tag")}
+              </div>
               <label className="field-stack"><span>Teacher notes</span><textarea value={teacherNotes} onChange={(event) => setTeacherNotes(event.target.value)} placeholder="Private notes for review, source details, or teaching remarks." /></label>
             </div>
           ) : null}

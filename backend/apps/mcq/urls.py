@@ -27,6 +27,15 @@ from .models import (
 ALLOWED_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
 
 
+def _normalize_source_question_number(value: object) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    if text.lower().startswith("q"):
+        text = text[1:].lstrip(" -")
+    return f"Q{text}" if text else ""
+
+
 def _asset_disk_path(asset: MCQImageAsset) -> Path:
     if asset.relative_path:
         return Path(asset.library.root_path) / asset.relative_path
@@ -531,7 +540,7 @@ def _apply_question_payload(question: MCQQuestion, payload: dict[str, object], v
     question.year = validated["year"]
     question.variant = str(payload.get("variant") or "").strip()
     question.source = str(payload.get("source") or "").strip()
-    question.source_question_number = str(payload.get("source_question_number") or "").strip()
+    question.source_question_number = _normalize_source_question_number(payload.get("source_question_number"))
     question.marks = validated["marks"]
     question.time_estimate_seconds = payload.get("time_estimate_seconds") or None
     question.difficulty = str(payload.get("difficulty") or "").strip()
