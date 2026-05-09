@@ -21,6 +21,9 @@ type EditorStep = "question" | "options" | "metadata";
 type ContentBlockType = "text" | "image" | "equation" | "table" | "note";
 type ContentBlockDraft = { id: string; block_type: ContentBlockType; text: string; assetId: number | null; tableText: string };
 type OptionDraft = { label: string; text: string; equation: string; assetId: number | null; imageWidth: number; imageFit: "contain" | "cover" };
+type ImageAlign = "left" | "center" | "right";
+type OptionImagePlacement = "top" | "bottom";
+type OptionImageSizing = "individual" | "same_height" | "same_width" | "same_size";
 type LastMetadataDefaults = {
   subject: string;
   syllabus: string;
@@ -56,7 +59,15 @@ type MCQQuestionDetailPayload = {
   tags: Array<{ id: number; name: string }>;
   notes: string;
   teacher_notes: string;
-  layout_settings: { rich_content?: JSONContent; rich_text?: string; rich_html?: string };
+  layout_settings: {
+    rich_content?: JSONContent;
+    rich_text?: string;
+    rich_html?: string;
+    option_image_layout?: {
+      placement?: OptionImagePlacement;
+      sizing?: OptionImageSizing;
+    };
+  };
   blocks: Array<{ block_type: string; text: string; asset_id: number | null; asset: MCQAsset | null; table_data?: { rows?: string[][] }; order: number }>;
   options: Array<{
     label: string;
@@ -112,6 +123,33 @@ const defaultTableRows: Record<string, string[]> = {
   D: ["", "", "", ""],
 };
 
+const RichImage = TiptapImage.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      width: {
+        default: 100,
+        parseHTML: (element) => Number(element.getAttribute("data-width") || element.getAttribute("width") || 100),
+        renderHTML: (attributes) => ({
+          "data-width": attributes.width,
+          width: attributes.width,
+          style: `width: ${attributes.width}%;`,
+        }),
+      },
+      "data-fit": {
+        default: "contain",
+        parseHTML: (element) => element.getAttribute("data-fit") || "contain",
+        renderHTML: (attributes) => ({ "data-fit": attributes["data-fit"] || "contain" }),
+      },
+      "data-align": {
+        default: "center",
+        parseHTML: (element) => element.getAttribute("data-align") || "center",
+        renderHTML: (attributes) => ({ "data-align": attributes["data-align"] || "center" }),
+      },
+    };
+  },
+});
+
 const equationSnippets = [
   { label: "a/b", value: "\\frac{a}{b}", title: "Fraction" },
   { label: "x^2", value: "x^{2}", title: "Power" },
@@ -161,6 +199,8 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
   const [tableRows, setTableRows] = useState<Record<string, string[]>>(defaultTableRows);
   const [layoutPreset, setLayoutPreset] = useState("standard");
   const [optionLayout, setOptionLayout] = useState("single");
+  const [optionImagePlacement, setOptionImagePlacement] = useState<OptionImagePlacement>("top");
+  const [optionImageSizing, setOptionImageSizing] = useState<OptionImageSizing>("individual");
   const [subject, setSubject] = useState("Physics");
   const [syllabus, setSyllabus] = useState("9702");
   const [examCode, setExamCode] = useState("");
@@ -182,6 +222,7 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
   const [openEditorMenu, setOpenEditorMenu] = useState<"numbering" | "imageSize" | "imageFit" | null>(null);
   const [selectedImageWidth, setSelectedImageWidth] = useState<number | null>(null);
   const [selectedImageFit, setSelectedImageFit] = useState<"contain" | "cover" | null>(null);
+  const [selectedImageAlign, setSelectedImageAlign] = useState<ImageAlign | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -251,7 +292,7 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
       Placeholder.configure({
         placeholder: "Write the question here. Use $v = u + at$ for inline equations, or insert images and tables from the toolbar.",
       }),
-      TiptapImage.configure({ allowBase64: false, inline: false }),
+      RichImage.configure({ allowBase64: false, inline: false }),
       TiptapTable.configure({ resizable: true }),
       TableRow,
       TableHeader,
@@ -341,12 +382,14 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
     if (!editor?.isActive("image")) {
       setSelectedImageWidth(null);
       setSelectedImageFit(null);
+      setSelectedImageAlign(null);
       return;
     }
     const attrs = editor.getAttributes("image");
     const width = Number(attrs.width ?? 100);
     setSelectedImageWidth(Number.isFinite(width) ? width : 100);
     setSelectedImageFit(attrs["data-fit"] === "cover" ? "cover" : "contain");
+    setSelectedImageAlign(attrs["data-align"] === "left" || attrs["data-align"] === "right" ? attrs["data-align"] : "center");
   }
 
   function richContentHasContent(content = richContent) {
@@ -448,6 +491,13 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
     }
     setLayoutPreset(question.layout_preset || "standard");
     setOptionLayout(question.option_layout || "single");
+    const optionImageLayoutSettings = question.layout_settings?.option_image_layout;
+    setOptionImagePlacement(optionImageLayoutSettings?.placement === "bottom" ? "bottom" : "top");
+    setOptionImageSizing(
+      ["same_height", "same_width", "same_size"].includes(String(optionImageLayoutSettings?.sizing))
+        ? optionImageLayoutSettings?.sizing as OptionImageSizing
+        : "individual",
+    );
     setSubject(question.subject || "Physics");
     setSyllabus(question.syllabus || "9702");
     setExamCode(question.exam_code || "");
@@ -724,6 +774,10 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
         rich_content: richContent,
         rich_html: richHtml,
         rich_text: richText || richPlainText(),
+        option_image_layout: {
+          placement: optionImagePlacement,
+          sizing: optionImageSizing,
+        },
       },
       subject,
       syllabus,
@@ -830,6 +884,8 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
     setOptions(defaultOptions.map((option) => ({ ...option })));
     setTableHeaders([...defaultTableHeaders]);
     setTableRows(Object.fromEntries(Object.entries(defaultTableRows).map(([label, row]) => [label, [...row]])));
+    setOptionImagePlacement("top");
+    setOptionImageSizing("individual");
     setStep("question");
     setSourceQuestionNumber("");
     setNotes("");
@@ -885,6 +941,15 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
     }
   }
 
+  function setEditorImageAlign(align: ImageAlign) {
+    richEditor?.chain().focus().updateAttributes("image", { "data-align": align }).run();
+    setSelectedImageAlign(align);
+    if (richEditor) {
+      setRichContent(richEditor.getJSON());
+      setRichHtml(richEditor.getHTML());
+    }
+  }
+
   function applyNumbering(type: string) {
     richEditor?.chain().focus().toggleOrderedList().updateAttributes("orderedList", { type }).run();
     setOpenEditorMenu(null);
@@ -892,7 +957,8 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
 
   async function uploadEditorImage(file: File | null) {
     await uploadAsset(file, "question", (asset) => {
-      richEditor?.chain().focus().setImage({ src: `${API_BASE}${asset.preview_url}`, alt: asset.original_name, width: 100 }).updateAttributes("image", { "data-fit": "contain" }).run();
+      richEditor?.chain().focus().setImage({ src: `${API_BASE}${asset.preview_url}`, alt: asset.original_name, width: 100 }).updateAttributes("image", { "data-fit": "contain", "data-align": "center" }).run();
+      refreshSelectedImageState();
     });
   }
 
@@ -960,7 +1026,8 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
     if (node.type === "image") {
       const width = typeof node.attrs?.width === "number" ? `${node.attrs.width}%` : typeof node.attrs?.width === "string" ? node.attrs.width : "100%";
       const fit = node.attrs?.["data-fit"] === "cover" ? "cover" : "contain";
-      return <img className={`a4-question-image fit-${fit}`} key={key} src={String(node.attrs?.src || "")} alt={String(node.attrs?.alt || "Question image")} style={{ width }} />;
+      const align = node.attrs?.["data-align"] === "left" || node.attrs?.["data-align"] === "right" ? node.attrs["data-align"] : "center";
+      return <img className={`a4-question-image fit-${fit} align-${align}`} key={key} src={String(node.attrs?.src || "")} alt={String(node.attrs?.alt || "Question image")} style={{ width }} />;
     }
     if (node.type === "table") return <table className="mcq-preview-table rich-table" key={key}><tbody>{children}</tbody></table>;
     if (node.type === "tableRow") return <tr key={key}>{children}</tr>;
@@ -991,12 +1058,14 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
   function renderOption(option: OptionDraft) {
     const asset = assets.find((item) => item.id === option.assetId);
     const cleanEquation = option.equation.trim().replace(/^\${1,2}|\${1,2}$/g, "");
+    const image = asset ? <img className={`a4-option-image fit-${option.imageFit}`} src={`${API_BASE}${asset.preview_url}`} alt={`${option.label} option`} style={{ width: `${option.imageWidth}%` }} /> : null;
     return (
       <>
         <b>{option.label}.</b>
+        {optionImagePlacement === "top" ? image : null}
         {option.text ? <span className="option-text-fragment">{renderMathText(option.text)}</span> : null}
         {cleanEquation ? <LatexMath latex={cleanEquation} /> : null}
-        {asset ? <img className={`a4-option-image fit-${option.imageFit}`} src={`${API_BASE}${asset.preview_url}`} alt={`${option.label} option`} style={{ width: `${option.imageWidth}%` }} /> : null}
+        {optionImagePlacement === "bottom" ? image : null}
         {!option.text && !cleanEquation && !asset ? <span className="option-text-fragment">Answer option</span> : null}
       </>
     );
@@ -1138,11 +1207,16 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
                   <button type="button" onClick={() => richEditor?.chain().focus().redo().run()} title="Redo"><Redo2 size={16} /></button>
                   <div className="image-size-control" title={selectedImageWidth ? "Selected image width" : "Click an image on the A4 canvas to adjust it"}>
                     <span>Image</span>
-                    {[25, 40, 50, 60, 75, 100].map((width) => (
+                    {[5, 10, 25, 40, 50, 60, 75, 100].map((width) => (
                       <button className={selectedImageWidth === width ? "active" : ""} disabled={!selectedImageWidth} key={width} type="button" onClick={() => setEditorImageSize(width)}>
                         {width}%
                       </button>
                     ))}
+                  </div>
+                  <div className="image-fit-control">
+                    <button className={selectedImageAlign === "left" ? "active" : ""} type="button" disabled={!selectedImageWidth} onClick={() => setEditorImageAlign("left")} title="Align selected image left"><AlignLeft size={15} /></button>
+                    <button className={selectedImageAlign === "center" ? "active" : ""} type="button" disabled={!selectedImageWidth} onClick={() => setEditorImageAlign("center")} title="Align selected image center"><AlignCenter size={15} /></button>
+                    <button className={selectedImageAlign === "right" ? "active" : ""} type="button" disabled={!selectedImageWidth} onClick={() => setEditorImageAlign("right")} title="Align selected image right"><AlignRight size={15} /></button>
                   </div>
                   <div className="image-fit-control">
                     <button className={selectedImageFit === "contain" ? "active" : ""} type="button" disabled={!selectedImageWidth} onClick={() => setEditorImageFit("contain")}>Fit</button>
@@ -1169,6 +1243,21 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
             <div className="mcq-step-panel">
               <div className="section-intro compact"><strong>Answer choice arrangement</strong><span>Choose how A-D will be arranged on the generated paper.</span></div>
               <div className="option-layout-card-grid compact-option-layouts">{optionLayoutVisuals.map((item) => <button className={`option-layout-card ${optionLayout === item.value ? "active" : ""}`} key={item.value} onClick={() => { setOptionLayout(item.value); setLayoutPreset(item.value === "table" ? "table_options" : item.value === "grid" ? "option_grid" : "standard"); }} type="button"><span className={`option-layout-thumbnail ${item.className}`}><i /><i /><i /><i /></span><strong>{item.title}</strong></button>)}</div>
+              {optionLayout !== "table" ? (
+                <div className="option-image-layout-controls">
+                  <div><strong>Option image position</strong><span>Controls where uploaded option images sit inside A-D choices.</span></div>
+                  <div className="segmented-compact">
+                    <button className={optionImagePlacement === "top" ? "active" : ""} type="button" onClick={() => setOptionImagePlacement("top")}>Image top</button>
+                    <button className={optionImagePlacement === "bottom" ? "active" : ""} type="button" onClick={() => setOptionImagePlacement("bottom")}>Image bottom</button>
+                  </div>
+                  <div className="segmented-compact">
+                    <button className={optionImageSizing === "individual" ? "active" : ""} type="button" onClick={() => setOptionImageSizing("individual")}>Individual</button>
+                    <button className={optionImageSizing === "same_height" ? "active" : ""} type="button" onClick={() => setOptionImageSizing("same_height")}>Same height</button>
+                    <button className={optionImageSizing === "same_width" ? "active" : ""} type="button" onClick={() => setOptionImageSizing("same_width")}>Same width</button>
+                    <button className={optionImageSizing === "same_size" ? "active" : ""} type="button" onClick={() => setOptionImageSizing("same_size")}>Similar size</button>
+                  </div>
+                </div>
+              ) : null}
               {optionLayout === "table" ? (
                 <div className="table-option-editor">
                   <div className="section-intro compact"><strong>Table answer options</strong><span>Edit the headings and A-D row cells. Select the correct answer by clicking the row letter.</span></div>
@@ -1254,7 +1343,7 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
                   <div className="paper-question-number">1</div>
                   <div className="paper-question-body">
                     <div className="question-block-preview rich-preview-content">{richContentHasContent() ? renderRichNode(richContent) : <p className="muted-preview">Write the question, insert equations, add images, or create a table.</p>}</div>
-                    {optionLayout === "table" ? renderOptionTablePreview() : <div className={`option-preview-grid layout-${optionLayout}`}>{options.map((option) => <span className={correctOption === option.label ? "correct" : ""} key={option.label}>{renderOption(option)}</span>)}</div>}
+                    {optionLayout === "table" ? renderOptionTablePreview() : <div className={`option-preview-grid layout-${optionLayout} option-images-${optionImageSizing}`}>{options.map((option) => <span className={correctOption === option.label ? "correct" : ""} key={option.label}>{renderOption(option)}</span>)}</div>}
                   </div>
                 </div>
               </div>
