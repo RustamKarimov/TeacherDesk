@@ -389,10 +389,11 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
               const equationBlock = option.blocks.find((block) => block.block_type === "equation");
               const imageBlock = option.blocks.find((block) => block.block_type === "image" && block.asset_id);
               if (imageBlock?.asset) setAssets((current) => (current.some((asset) => asset.id === imageBlock.asset?.id) ? current : [imageBlock.asset!, ...current]));
+              const legacyEquation = equationBlock?.text ? `$${equationBlock.text.replace(/^\${1,2}|\${1,2}$/g, "")}$` : "";
               return {
                 label: option.label,
-                text: textBlock?.text ?? "",
-                equation: equationBlock?.text ?? "",
+                text: [textBlock?.text ?? "", legacyEquation].filter(Boolean).join(textBlock?.text && legacyEquation ? "\n" : ""),
+                equation: "",
                 assetId: imageBlock?.asset_id ?? null,
                 imageWidth: imageBlock?.settings?.width ?? 100,
                 imageFit: imageBlock?.settings?.fit ?? "contain",
@@ -479,8 +480,8 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
     setBlocks((current) => current.map((block) => (block.id === id ? { ...block, text: `${block.text}${block.text ? " " : ""}${snippet}` } : block)));
   }
 
-  function insertIntoOptionEquation(index: number, snippet: string) {
-    setOptions((current) => current.map((option, optionIndex) => (optionIndex === index ? { ...option, equation: `${option.equation}${option.equation ? " " : ""}${snippet}` } : option)));
+  function insertIntoOptionText(index: number, snippet: string) {
+    setOptions((current) => current.map((option, optionIndex) => (optionIndex === index ? { ...option, text: `${option.text}${option.text ? " " : ""}$${snippet}$` } : option)));
   }
 
   function addBlock(block_type: ContentBlockType) {
@@ -654,7 +655,7 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
       option.label,
       [
         option.text.trim() ? { block_type: "text", text: option.text, order: 1 } : null,
-        option.equation.trim() ? { block_type: "equation", text: option.equation, order: 2 } : null,
+        option.equation.trim() ? { block_type: "equation", text: option.equation.replace(/^\${1,2}|\${1,2}$/g, ""), order: 2 } : null,
         option.assetId ? { block_type: "image", asset_id: option.assetId, order: 3, settings: { width: option.imageWidth, fit: option.imageFit } } : null,
       ].filter(Boolean),
     ]));
@@ -887,13 +888,14 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
 
   function renderOption(option: OptionDraft) {
     const asset = assets.find((item) => item.id === option.assetId);
+    const cleanEquation = option.equation.trim().replace(/^\${1,2}|\${1,2}$/g, "");
     return (
       <>
         <b>{option.label}.</b>
         {option.text ? <span className="option-text-fragment">{renderMathText(option.text)}</span> : null}
-        {option.equation ? <LatexMath latex={option.equation} /> : null}
+        {cleanEquation ? <LatexMath latex={cleanEquation} /> : null}
         {asset ? <img className={`a4-option-image fit-${option.imageFit}`} src={`${API_BASE}${asset.preview_url}`} alt={`${option.label} option`} style={{ width: `${option.imageWidth}%` }} /> : null}
-        {!option.text && !option.equation && !asset ? <span className="option-text-fragment">Answer option</span> : null}
+        {!option.text && !cleanEquation && !asset ? <span className="option-text-fragment">Answer option</span> : null}
       </>
     );
   }
@@ -1096,10 +1098,9 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
                   <div className="option-editor-list">{options.map((option, index) => (
                 <div className={`option-editor-card ${correctOption === option.label ? "correct" : ""}`} key={option.label}>
                   <div className="option-card-head"><button className="option-letter" onClick={() => setCorrectOption(option.label)} title="Mark as correct">{option.label}</button><div><strong>{correctOption === option.label ? "Correct answer" : "Answer option"}</strong><span>Text, equation, image, or a combination.</span></div><button className="icon-button" disabled={options.length <= 2} onClick={() => removeOption(index)}><Trash2 size={15} /></button></div>
-                  <textarea value={option.text} onPaste={(event) => handleOptionPaste(event, index)} onChange={(event) => updateOption(index, { text: event.target.value })} placeholder={`Option ${option.label} text. Inline maths can use $\\frac{1}{2}mv^2$. Paste an image here to attach it.`} />
-                  <div className="option-equation-panel">
-                    <div className="option-equation-tools"><span><Sigma size={14} /></span>{equationSnippets.slice(0, 8).map((snippet) => <button key={snippet.title} type="button" title={snippet.title} onClick={() => insertIntoOptionEquation(index, snippet.value)}>{snippet.label}</button>)}</div>
-                    <input className="option-equation-input" value={option.equation} onChange={(event) => updateOption(index, { equation: event.target.value })} placeholder="Optional separate equation, e.g. E = mc^2" />
+                  <textarea value={option.text} onPaste={(event) => handleOptionPaste(event, index)} onChange={(event) => updateOption(index, { text: event.target.value })} placeholder={`Type option ${option.label}. Use $\\frac{1}{2}mv^2$ for inline maths. Paste an image here to attach it.`} />
+                  <div className="option-equation-panel compact">
+                    <div className="option-equation-tools"><span><Sigma size={14} /></span>{equationSnippets.slice(0, 8).map((snippet) => <button key={snippet.title} type="button" title={snippet.title} onClick={() => insertIntoOptionText(index, snippet.value)}>{snippet.label}</button>)}</div>
                   </div>
                   <div className="option-asset-row"><label className="compact-upload-button"><UploadCloud size={15} />Upload image<input type="file" accept="image/*" disabled={isUploadingAsset} onChange={(event) => uploadAsset(event.target.files?.[0] ?? null, "option", (asset) => updateOption(index, { assetId: asset.id }))} /></label><select className="styled-select" value={option.assetId ?? ""} onChange={(event) => updateOption(index, { assetId: event.target.value ? Number(event.target.value) : null })}><option value="">No option image</option>{assets.map((asset) => <option value={asset.id} key={asset.id}>{asset.original_name}</option>)}</select>{option.assetId ? <button className="secondary-action" type="button" onClick={() => updateOption(index, { assetId: null })}>Remove</button> : null}</div>
                   {option.assetId ? <div className="option-image-tools"><label><span>Image width</span><input type="range" min="25" max="100" step="5" value={option.imageWidth} onChange={(event) => updateOption(index, { imageWidth: Number(event.target.value) })} /></label><select value={option.imageFit} onChange={(event) => updateOption(index, { imageFit: event.target.value === "cover" ? "cover" : "contain" })}><option value="contain">Fit whole image</option><option value="cover">Crop to frame</option></select></div> : null}
