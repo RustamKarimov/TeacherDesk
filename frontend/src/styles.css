@@ -4540,11 +4540,20 @@ td,
 }
 
 .mcq-bank-filters .search-field {
-  flex: 1 1 320px;
+  flex: 1 1 100%;
 }
 
-.mcq-bank-filters select {
+.mcq-filter-row {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 10px;
+  width: 100%;
+}
+
+.mcq-bank-filters select,
+.multi-filter {
   flex: 0 1 160px;
+  min-width: 0;
 }
 
 .filters-toolbar select,
@@ -4609,6 +4618,111 @@ td,
   padding: 0 12px;
 }
 
+.mcq-bank-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.multi-filter {
+  position: relative;
+}
+
+.multi-filter summary {
+  display: flex;
+  align-items: center;
+  min-height: 40px;
+  border: 1px solid var(--line, #d8e1eb);
+  border-radius: 8px;
+  background: var(--field-bg, var(--input-bg, #ffffff));
+  color: var(--text, #172033);
+  cursor: pointer;
+  list-style: none;
+  padding: 0 12px;
+  font-weight: 750;
+}
+
+.multi-filter summary::-webkit-details-marker {
+  display: none;
+}
+
+.multi-filter summary::after {
+  content: "⌄";
+  margin-left: auto;
+  color: var(--muted, #6b778c);
+}
+
+.multi-filter[open] summary {
+  border-color: var(--teal, #14b8a6);
+}
+
+.multi-filter-menu {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  display: grid;
+  gap: 4px;
+  max-height: 260px;
+  overflow: auto;
+  border: 1px solid var(--line, #d8e1eb);
+  border-radius: 10px;
+  background: var(--panel-bg, #ffffff);
+  box-shadow: 0 18px 45px rgba(0, 0, 0, 0.24);
+  padding: 8px;
+}
+
+.multi-filter-actions {
+  display: flex;
+  gap: 6px;
+  padding-bottom: 6px;
+}
+
+.multi-filter-actions button {
+  flex: 1;
+  min-height: 28px;
+  border: 1px solid var(--line, #d8e1eb);
+  border-radius: 7px;
+  background: var(--panel-bg-soft, #f8fafc);
+  color: var(--text, #172033);
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.multi-filter-menu label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 7px;
+  cursor: pointer;
+  padding: 7px 8px;
+  color: var(--text, #172033);
+}
+
+.multi-filter-menu label:hover {
+  background: color-mix(in srgb, var(--teal, #14b8a6) 14%, transparent);
+}
+
+.bulk-action-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.bulk-action-bar > span {
+  color: var(--muted, #6b778c);
+  font-weight: 750;
+}
+
+.danger-border {
+  border-color: color-mix(in srgb, #ef4444 55%, var(--line, #d8e1eb)) !important;
+  color: #f87171 !important;
+}
+
 .mcq-table {
   display: grid;
   border: 1px solid var(--line, #d8e1eb);
@@ -4619,7 +4733,7 @@ td,
 .mcq-table-head,
 .mcq-table-row {
   display: grid;
-  grid-template-columns: minmax(220px, 1.3fr) minmax(170px, 1fr) 90px 70px 120px 100px;
+  grid-template-columns: 34px minmax(230px, 1.35fr) minmax(150px, 0.9fr) minmax(220px, 1fr);
   gap: 12px;
   align-items: center;
 }
@@ -4642,6 +4756,24 @@ td,
 
 .mcq-table-row.active {
   background: color-mix(in srgb, var(--teal, #14b8a6) 17%, var(--panel-bg));
+}
+
+.table-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted, #6b778c);
+  cursor: pointer;
+}
+
+.table-check:hover {
+  background: color-mix(in srgb, var(--teal, #14b8a6) 16%, transparent);
+  color: var(--teal, #14b8a6);
 }
 
 .mcq-table-row small,
@@ -4681,6 +4813,30 @@ td,
 .row-actions .icon-button {
   width: 32px;
   height: 32px;
+}
+
+.mcq-row-details {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
+  min-width: 0;
+}
+
+.mcq-marks-pill {
+  border: 1px solid var(--line, #d8e1eb);
+  border-radius: 999px;
+  color: var(--muted, #6b778c);
+  padding: 5px 8px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.active-preview-mode {
+  border-color: var(--teal, #14b8a6) !important;
+  color: var(--teal, #14b8a6) !important;
+  background: color-mix(in srgb, var(--teal, #14b8a6) 14%, transparent) !important;
 }
 
 .preview-actions {

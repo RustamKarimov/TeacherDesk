@@ -257,6 +257,8 @@ def questions(request):
     search = request.GET.get("search", "").strip()
     topic = request.GET.get("topic", "").strip()
     tag = request.GET.get("tag", "").strip()
+    topic_ids = [value for value in request.GET.getlist("topic_id") if str(value).strip()]
+    tag_ids = [value for value in request.GET.getlist("tag_id") if str(value).strip()]
     difficulty = request.GET.get("difficulty", "").strip()
     review_status = request.GET.get("review_status", "").strip()
     content_type = request.GET.get("content_type", "").strip()
@@ -279,8 +281,12 @@ def questions(request):
         )
     if topic:
         queryset = queryset.filter(topics__name=topic)
+    if topic_ids:
+        queryset = queryset.filter(topics__id__in=topic_ids)
     if tag:
         queryset = queryset.filter(tags__name=tag)
+    if tag_ids:
+        queryset = queryset.filter(tags__id__in=tag_ids)
     if difficulty:
         queryset = queryset.filter(difficulty=difficulty)
     if review_status:

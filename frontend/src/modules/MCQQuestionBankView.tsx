@@ -1,4 +1,4 @@
-import { BadgeCheck, Copy, FileQuestion, Image, Pencil, Plus, Search, Sigma, Table2, Tags, Trash2 } from "lucide-react";
+import { BadgeCheck, CheckSquare2, ClipboardList, Copy, FileQuestion, Image, Pencil, Plus, Search, Sigma, Square, Table2, Tags, Trash2, X } from "lucide-react";
 import { type CSSProperties, type ReactNode, useEffect, useMemo, useState } from "react";
 import type { JSONContent } from "@tiptap/react";
 import katex from "katex";
@@ -166,16 +166,54 @@ function hasRichContent(question: MCQQuestionDetailPayload) {
   return Boolean(question.layout_settings?.rich_content?.content?.length || question.content_json?.content?.length);
 }
 
+function MultiSelectFilter({
+  label,
+  options,
+  selectedIds,
+  onChange,
+}: {
+  label: string;
+  options: Array<{ id: number; name: string }>;
+  selectedIds: number[];
+  onChange: (ids: number[]) => void;
+}) {
+  const selectedNames = options.filter((item) => selectedIds.includes(item.id)).map((item) => item.name);
+  const summary = selectedNames.length ? `${selectedNames.length} selected` : label;
+  function toggle(id: number) {
+    onChange(selectedIds.includes(id) ? selectedIds.filter((item) => item !== id) : [...selectedIds, id]);
+  }
+  return (
+    <details className="multi-filter">
+      <summary>{summary}</summary>
+      <div className="multi-filter-menu">
+        <div className="multi-filter-actions">
+          <button type="button" onClick={() => onChange(options.map((item) => item.id))}>All</button>
+          <button type="button" onClick={() => onChange([])}>None</button>
+        </div>
+        {options.map((item) => (
+          <label key={item.id}>
+            <input checked={selectedIds.includes(item.id)} onChange={() => toggle(item.id)} type="checkbox" />
+            <span>{item.name}</span>
+          </label>
+        ))}
+      </div>
+    </details>
+  );
+}
+
 export function MCQQuestionBankView({ onAddQuestion, onEditQuestion }: { onAddQuestion: () => void; onEditQuestion: (questionId: number) => void }) {
   const [rows, setRows] = useState<MCQQuestionRow[]>([]);
   const [metadata, setMetadata] = useState<MCQMetadataPayload | null>(null);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [search, setSearch] = useState("");
-  const [topic, setTopic] = useState("");
-  const [tag, setTag] = useState("");
+  const [topicIds, setTopicIds] = useState<number[]>([]);
+  const [tagIds, setTagIds] = useState<number[]>([]);
   const [difficulty, setDifficulty] = useState("");
   const [reviewStatus, setReviewStatus] = useState("");
   const [contentType, setContentType] = useState("");
+  const [selectedQuestionIds, setSelectedQuestionIds] = useState<number[]>([]);
+  const [examBasketIds, setExamBasketIds] = useState<number[]>([]);
+  const [notice, setNotice] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [pageCount, setPageCount] = useState(1);
@@ -202,8 +240,8 @@ export function MCQQuestionBankView({ onAddQuestion, onEditQuestion }: { onAddQu
   useEffect(() => {
     const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) });
     if (search) params.set("search", search);
-    if (topic) params.set("topic", topic);
-    if (tag) params.set("tag", tag);
+    topicIds.forEach((id) => params.append("topic_id", String(id)));
+    tagIds.forEach((id) => params.append("tag_id", String(id)));
     if (difficulty) params.set("difficulty", difficulty);
     if (reviewStatus) params.set("review_status", reviewStatus);
     if (contentType) params.set("content_type", contentType);
@@ -216,7 +254,7 @@ export function MCQQuestionBankView({ onAddQuestion, onEditQuestion }: { onAddQu
         setSelectedId((current) => payload.results.some((item) => item.id === current) ? current : payload.results[0]?.id ?? null);
       })
       .catch((caught) => setError(caught instanceof Error ? caught.message : "Could not load MCQ questions."));
-  }, [search, topic, tag, difficulty, reviewStatus, contentType, page, pageSize, reloadToken]);
+  }, [search, topicIds, tagIds, difficulty, reviewStatus, contentType, page, pageSize, reloadToken]);
 
   useEffect(() => {
     if (!selected?.id) {
@@ -247,6 +285,7 @@ export function MCQQuestionBankView({ onAddQuestion, onEditQuestion }: { onAddQu
       const response = await fetch(`${API_BASE}/api/mcq/questions/${questionId}/delete/`, { method: "POST" });
       await readJson(response);
       setSelectedId(null);
+      setSelectedQuestionIds((current) => current.filter((id) => id !== questionId));
       setReloadToken((current) => current + 1);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not delete MCQ question.");
@@ -255,12 +294,45 @@ export function MCQQuestionBankView({ onAddQuestion, onEditQuestion }: { onAddQu
 
   function resetFilters() {
     setSearch("");
-    setTopic("");
-    setTag("");
+    setTopicIds([]);
+    setTagIds([]);
     setDifficulty("");
     setReviewStatus("");
     setContentType("");
     setPage(1);
+  }
+
+  function toggleSelectedQuestion(questionId: number) {
+    setSelectedQuestionIds((current) => current.includes(questionId) ? current.filter((id) => id !== questionId) : [...current, questionId]);
+  }
+
+  function togglePageSelection() {
+    const pageIds = rows.map((row) => row.id);
+    const allSelected = pageIds.length > 0 && pageIds.every((id) => selectedQuestionIds.includes(id));
+    setSelectedQuestionIds((current) => allSelected ? current.filter((id) => !pageIds.includes(id)) : [...new Set([...current, ...pageIds])]);
+  }
+
+  function addSelectedToExam() {
+    const ids = selectedQuestionIds.length ? selectedQuestionIds : selected ? [selected.id] : [];
+    setExamBasketIds((current) => [...new Set([...current, ...ids])]);
+    setNotice(`${ids.length} question${ids.length === 1 ? "" : "s"} added to the MCQ exam basket.`);
+  }
+
+  async function deleteSelectedQuestions() {
+    if (!selectedQuestionIds.length) return;
+    if (!confirm(`Delete ${selectedQuestionIds.length} selected MCQ question(s)?`)) return;
+    setError(null);
+    try {
+      for (const questionId of selectedQuestionIds) {
+        const response = await fetch(`${API_BASE}/api/mcq/questions/${questionId}/delete/`, { method: "POST" });
+        await readJson(response);
+      }
+      setSelectedQuestionIds([]);
+      setSelectedId(null);
+      setReloadToken((current) => current + 1);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not delete selected MCQ questions.");
+    }
   }
 
   function renderSelectedQuestionPreview() {
@@ -321,59 +393,64 @@ export function MCQQuestionBankView({ onAddQuestion, onEditQuestion }: { onAddQu
       <section className="workbench mcq-bank-workbench">
         <div className="panel mcq-bank-panel">
           {error ? <div className="callout error">{error}</div> : null}
+          {notice ? <div className="callout success mcq-bank-notice"><span>{notice}</span><button className="icon-button" type="button" onClick={() => setNotice(null)}><X size={14} /></button></div> : null}
           <div className="filters-toolbar mcq-bank-filters">
-            <label className="search-field"><Search size={17} /><input value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder="Search text, topic, source, or tag" /></label>
-            <select value={topic} onChange={(event) => { setTopic(event.target.value); setPage(1); }}>
-              <option value="">All topics</option>
-              {metadata?.topics.map((item) => <option key={item.id} value={item.name}>{item.name}</option>)}
-            </select>
-            <select value={tag} onChange={(event) => { setTag(event.target.value); setPage(1); }}>
-              <option value="">All tags</option>
-              {metadata?.tags.map((item) => <option key={item.id} value={item.name}>{item.name}</option>)}
-            </select>
-            <select value={difficulty} onChange={(event) => { setDifficulty(event.target.value); setPage(1); }}>
-              <option value="">Any difficulty</option>
-              {["Easy", "Medium", "Hard", ...(metadata?.difficulties ?? []).filter((item) => !["Easy", "Medium", "Hard"].includes(item))].map((item) => <option key={item} value={item}>{item}</option>)}
-            </select>
-            <select value={contentType} onChange={(event) => { setContentType(event.target.value); setPage(1); }}>
-              <option value="">Any content</option>
-              <option value="image">Has image</option>
-              <option value="table">Has table</option>
-              <option value="equation">Has equation</option>
-            </select>
-            <select value={reviewStatus} onChange={(event) => { setReviewStatus(event.target.value as MCQReviewStatus | ""); setPage(1); }}>
-              <option value="">Any status</option>
-              {metadata?.review_statuses.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
-            </select>
-            <button className="secondary-action compact-action" type="button" onClick={resetFilters}>Clear</button>
+            <label className="search-field mcq-bank-search"><Search size={17} /><input value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder="Search question text, exam code, source, topic, or tag" /></label>
+            <div className="mcq-filter-row">
+              <MultiSelectFilter label="Topics" options={metadata?.topics ?? []} selectedIds={topicIds} onChange={(ids) => { setTopicIds(ids); setPage(1); }} />
+              <MultiSelectFilter label="Tags" options={metadata?.tags ?? []} selectedIds={tagIds} onChange={(ids) => { setTagIds(ids); setPage(1); }} />
+              <select value={difficulty} onChange={(event) => { setDifficulty(event.target.value); setPage(1); }}>
+                <option value="">Any difficulty</option>
+                {["Easy", "Medium", "Hard", ...(metadata?.difficulties ?? []).filter((item) => !["Easy", "Medium", "Hard"].includes(item))].map((item) => <option key={item} value={item}>{item}</option>)}
+              </select>
+              <select value={contentType} onChange={(event) => { setContentType(event.target.value); setPage(1); }}>
+                <option value="">Any content</option>
+                <option value="image">Has image</option>
+                <option value="table">Has table</option>
+                <option value="equation">Has equation</option>
+              </select>
+              <select value={reviewStatus} onChange={(event) => { setReviewStatus(event.target.value as MCQReviewStatus | ""); setPage(1); }}>
+                <option value="">Any review status</option>
+                {metadata?.review_statuses.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+              </select>
+              <button className="secondary-action compact-action" type="button" onClick={resetFilters}>Clear</button>
+            </div>
           </div>
 
           <div className="results-head">
             <div><strong>Results</strong><span>{count} MCQ questions / showing {tableSummary}</span></div>
-            <button className="secondary-action" disabled={!selected} onClick={() => selected && onEditQuestion(selected.id)}><Pencil size={16} />Edit selected</button>
+            <div className="bulk-action-bar">
+              <span>{selectedQuestionIds.length} selected / {examBasketIds.length} in exam basket</span>
+              <button className="secondary-action compact-action" disabled={!selectedQuestionIds.length && !selected} onClick={addSelectedToExam}><ClipboardList size={15} />Add to exam</button>
+              <button className="secondary-action compact-action danger-border" disabled={!selectedQuestionIds.length} onClick={deleteSelectedQuestions}><Trash2 size={15} />Delete selected</button>
+              <button className="secondary-action compact-action" disabled={!selected} onClick={() => selected && onEditQuestion(selected.id)}><Pencil size={15} />Edit current</button>
+            </div>
           </div>
 
           <div className="mcq-table">
             <div className="mcq-table-head">
-              <span>Question</span><span>Topics / Tags</span><span>Type</span><span>Marks</span><span>Status</span><span>Actions</span>
+              <button className="table-check" onClick={togglePageSelection} type="button" title="Select all visible questions">{rows.length > 0 && rows.every((row) => selectedQuestionIds.includes(row.id)) ? <CheckSquare2 size={17} /> : <Square size={17} />}</button>
+              <span>Question</span><span>Topics</span><span>Details</span>
             </div>
             {rows.length ? rows.map((row) => (
               <div className={`mcq-table-row ${selected?.id === row.id ? "active" : ""}`} key={row.id} onClick={() => setSelectedId(row.id)} role="button" tabIndex={0}>
+                <button className="table-check" onClick={(event) => { event.stopPropagation(); toggleSelectedQuestion(row.id); }} type="button" title="Select question">{selectedQuestionIds.includes(row.id) ? <CheckSquare2 size={17} /> : <Square size={17} />}</button>
                 <span><strong>{row.title || `MCQ #${row.id}`}</strong><small>{row.exam_code || row.source || "Manual question"} {row.source_question_number ? `/ ${row.source_question_number}` : ""}</small></span>
-                <span className="chip-wrap" title={[...row.topics.map((item) => item.name), ...row.tags.map((item) => `#${item.name}`)].join(", ")}>
+                <span className="chip-wrap" title={row.topics.map((item) => item.name).join(", ")}>
                   {row.topics.slice(0, 2).map((item) => <em key={`topic-${item.id}`}>{item.name}</em>)}
-                  {row.tags.slice(0, 2).map((item) => <em className="tag-chip" key={`tag-${item.id}`}>{item.name}</em>)}
-                  {row.topics.length + row.tags.length > 4 ? <em>+{row.topics.length + row.tags.length - 4}</em> : null}
+                  {row.topics.length > 2 ? <em>+{row.topics.length - 2}</em> : null}
                 </span>
-                <span className="content-icons" title={[row.has_images ? "image" : "", row.has_tables ? "table" : "", row.has_equations ? "equation" : ""].filter(Boolean).join(", ") || "text"}>
-                  {row.has_images ? <Image size={16} /> : null}{row.has_tables ? <Table2 size={16} /> : null}{row.has_equations ? <Sigma size={16} /> : null}{!row.has_images && !row.has_tables && !row.has_equations ? <Tags size={16} /> : null}
-                </span>
-                <span>{row.marks}</span>
-                <span className={`mini-status ${row.review_status === "needs_review" ? "warn" : row.review_status === "verified" || row.review_status === "ready" ? "ok" : ""}`}>{row.review_status_label}</span>
-                <span className="row-actions">
-                  <button className="icon-button" onClick={(event) => { event.stopPropagation(); onEditQuestion(row.id); }} title="Edit full question"><Pencil size={15} /></button>
-                  <button className="icon-button" onClick={(event) => { event.stopPropagation(); duplicateQuestion(row.id); }} title="Duplicate question"><Copy size={15} /></button>
-                  <button className="icon-button danger-icon" onClick={(event) => { event.stopPropagation(); deleteQuestion(row.id); }} title="Delete question"><Trash2 size={15} /></button>
+                <span className="mcq-row-details">
+                  <span className={`mini-status ${row.review_status === "needs_review" ? "warn" : row.review_status === "verified" || row.review_status === "ready" ? "ok" : ""}`}>{row.review_status_label}</span>
+                  <span className="mcq-marks-pill">{row.marks} mark{row.marks === 1 ? "" : "s"}</span>
+                  <span className="content-icons" title={[row.has_images ? "image" : "", row.has_tables ? "table" : "", row.has_equations ? "equation" : ""].filter(Boolean).join(", ") || "text"}>
+                    {row.has_images ? <Image size={15} /> : null}{row.has_tables ? <Table2 size={15} /> : null}{row.has_equations ? <Sigma size={15} /> : null}{!row.has_images && !row.has_tables && !row.has_equations ? <Tags size={15} /> : null}
+                  </span>
+                  <span className="row-actions">
+                    <button className="icon-button" onClick={(event) => { event.stopPropagation(); onEditQuestion(row.id); }} title="Edit full question"><Pencil size={15} /></button>
+                    <button className="icon-button" onClick={(event) => { event.stopPropagation(); duplicateQuestion(row.id); }} title="Duplicate question"><Copy size={15} /></button>
+                    <button className="icon-button danger-icon" onClick={(event) => { event.stopPropagation(); deleteQuestion(row.id); }} title="Delete question"><Trash2 size={15} /></button>
+                  </span>
                 </span>
               </div>
             )) : <div className="dashboard-empty">No MCQ questions match these filters.</div>}
@@ -389,9 +466,10 @@ export function MCQQuestionBankView({ onAddQuestion, onEditQuestion }: { onAddQu
 
         <aside className="panel mcq-preview-panel sticky-preview">
           <div className="dashboard-widget-head">
-            <div><strong>A4 Preview</strong><span>Student view of the selected question</span></div>
+            <div><strong>A4 Preview</strong><span>{isTeacherView ? "Teacher preview: correct answer is highlighted" : "Student preview: answers are hidden"}</span></div>
             <div className="preview-actions">
-              <button className="ghost-button" onClick={() => setIsTeacherView((current) => !current)}>{isTeacherView ? "Student view" : "Teacher view"}</button>
+              <button className={`ghost-button ${!isTeacherView ? "active-preview-mode" : ""}`} onClick={() => setIsTeacherView(false)}>Student</button>
+              <button className={`ghost-button ${isTeacherView ? "active-preview-mode" : ""}`} onClick={() => setIsTeacherView(true)}>Teacher</button>
               <button className="secondary-action compact-action" disabled={!selected} onClick={() => selected && onEditQuestion(selected.id)}><Pencil size={15} />Edit</button>
             </div>
           </div>

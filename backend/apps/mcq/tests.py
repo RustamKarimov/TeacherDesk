@@ -145,6 +145,27 @@ class MCQApiTests(TestCase):
         self.assertEqual(first["title"], "Equation question")
         self.assertEqual(first["has_equations"], True)
 
+    def test_question_list_filters_by_multiple_topics_and_tags(self):
+        topic_a = MCQTopic.objects.create(library=self.library, name="Kinematics")
+        topic_b = MCQTopic.objects.create(library=self.library, name="Dynamics")
+        tag_a = MCQTag.objects.create(library=self.library, name="graph")
+        tag_b = MCQTag.objects.create(library=self.library, name="calculation")
+        keep_one = MCQQuestion.objects.create(library=self.library, title="Keep one")
+        keep_one.topics.add(topic_a)
+        keep_one.tags.add(tag_a)
+        keep_two = MCQQuestion.objects.create(library=self.library, title="Keep two")
+        keep_two.topics.add(topic_b)
+        keep_two.tags.add(tag_b)
+        drop = MCQQuestion.objects.create(library=self.library, title="Drop")
+        other_topic = MCQTopic.objects.create(library=self.library, name="Electricity")
+        drop.topics.add(other_topic)
+
+        response = self.client.get(f"/api/mcq/questions/?topic_id={topic_a.id}&topic_id={topic_b.id}&tag_id={tag_a.id}&tag_id={tag_b.id}")
+
+        self.assertEqual(response.status_code, 200)
+        titles = {question["title"] for question in response.json()["results"]}
+        self.assertEqual(titles, {"Keep one", "Keep two"})
+
     def test_create_question_saves_metadata_and_layout(self):
         topic = MCQTopic.objects.create(library=self.library, name="Kinematics")
         tag = MCQTag.objects.create(library=self.library, name="calculation")
