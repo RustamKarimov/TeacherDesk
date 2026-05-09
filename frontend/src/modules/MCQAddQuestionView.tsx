@@ -1,5 +1,7 @@
 import { Check, GripVertical, Image, Plus, Save, Sigma, Table2, Text, Trash2, UploadCloud } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
+import katex from "katex";
+import "katex/dist/katex.min.css";
 
 import { API_BASE, readJson } from "../api";
 import type { MCQAsset, MCQAssetListPayload, MCQMetadataPayload, MCQReviewStatus } from "../types";
@@ -48,6 +50,7 @@ type MCQQuestionDetailPayload = {
     label: string;
     is_correct: boolean;
     order: number;
+    layout_settings: { table_headers?: string[]; table_cells?: string[] };
     blocks: Array<{ block_type: string; text: string; asset_id: number | null; asset: MCQAsset | null; order: number }>;
   }>;
 };
@@ -91,6 +94,29 @@ const defaultOptions: OptionDraft[] = [
   { label: "D", text: "", equation: "", assetId: null },
 ];
 
+const defaultTableHeaders = ["acceleration", "charge", "kinetic energy", "wavelength"];
+const defaultTableRows: Record<string, string[]> = {
+  A: ["scalar", "vector", "vector", "scalar"],
+  B: ["vector", "vector", "scalar", "scalar"],
+  C: ["scalar", "scalar", "scalar", "vector"],
+  D: ["vector", "scalar", "scalar", "scalar"],
+};
+
+const equationSnippets = [
+  { label: "Fraction", value: "\\frac{a}{b}" },
+  { label: "Power", value: "x^{2}" },
+  { label: "Subscript", value: "v_{x}" },
+  { label: "Root", value: "\\sqrt{x}" },
+  { label: "Vector", value: "\\vec{F}" },
+  { label: "Theta", value: "\\theta" },
+  { label: "Delta", value: "\\Delta" },
+  { label: "Pi", value: "\\pi" },
+  { label: "Sum", value: "\\sum_{i=1}^{n}" },
+  { label: "Integral", value: "\\int_{a}^{b}" },
+  { label: "Limit", value: "\\lim_{x\\to 0}" },
+  { label: "Matrix", value: "\\begin{bmatrix} a & b \\\\ c & d \\end{bmatrix}" },
+];
+
 export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: number | null; onSaved: () => void }) {
   const [metadata, setMetadata] = useState<MCQMetadataPayload | null>(null);
   const [step, setStep] = useState<EditorStep>("layout");
@@ -100,6 +126,8 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
   const [correctOption, setCorrectOption] = useState("A");
   const [marks, setMarks] = useState(1);
   const [options, setOptions] = useState<OptionDraft[]>(defaultOptions);
+  const [tableHeaders, setTableHeaders] = useState<string[]>(defaultTableHeaders);
+  const [tableRows, setTableRows] = useState<Record<string, string[]>>(defaultTableRows);
   const [layoutPreset, setLayoutPreset] = useState("standard");
   const [optionLayout, setOptionLayout] = useState("single");
   const [subject, setSubject] = useState("Physics");
@@ -189,6 +217,14 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
             })
         : defaultOptions,
     );
+    const tableOptions = question.options.filter((option) => option.layout_settings?.table_cells?.length);
+    if (tableOptions.length) {
+      setTableHeaders(tableOptions[0].layout_settings.table_headers?.length ? tableOptions[0].layout_settings.table_headers! : defaultTableHeaders);
+      setTableRows(Object.fromEntries(tableOptions.map((option) => [option.label, option.layout_settings.table_cells ?? []])));
+    } else {
+      setTableHeaders(defaultTableHeaders);
+      setTableRows(defaultTableRows);
+    }
     setLayoutPreset(question.layout_preset || "standard");
     setOptionLayout(question.option_layout || "single");
     setSubject(question.subject || "Physics");
@@ -256,6 +292,14 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
     setBlocks((current) => current.map((block) => (block.id === id ? { ...block, ...patch } : block)));
   }
 
+  function insertIntoBlock(id: string, snippet: string) {
+    setBlocks((current) => current.map((block) => (block.id === id ? { ...block, text: `${block.text}${block.text ? " " : ""}${snippet}` } : block)));
+  }
+
+  function insertIntoOptionEquation(index: number, snippet: string) {
+    setOptions((current) => current.map((option, optionIndex) => (optionIndex === index ? { ...option, equation: `${option.equation}${option.equation ? " " : ""}${snippet}` } : option)));
+  }
+
   function addBlock(block_type: ContentBlockType) {
     setBlocks((current) => [...current, { id: newId(), block_type, text: "", assetId: null, tableText: block_type === "table" ? "heading 1 | heading 2\nvalue | value" : "" }]);
   }
@@ -289,7 +333,31 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
     const removedLabel = options[index].label;
     const nextOptions = options.filter((_, optionIndex) => optionIndex !== index);
     setOptions(nextOptions);
+    setTableRows((current) => Object.fromEntries(Object.entries(current).filter(([label]) => label !== removedLabel)));
     if (correctOption === removedLabel) setCorrectOption(nextOptions[0]?.label ?? "A");
+  }
+
+  function updateTableHeader(index: number, value: string) {
+    setTableHeaders((current) => current.map((header, headerIndex) => (headerIndex === index ? value : header)));
+  }
+
+  function addTableColumn() {
+    setTableHeaders((current) => [...current, `column ${current.length + 1}`]);
+    setTableRows((current) => Object.fromEntries(options.map((option) => [option.label, [...(current[option.label] ?? []), ""]])));
+  }
+
+  function removeTableColumn(index: number) {
+    if (tableHeaders.length <= 1) return;
+    setTableHeaders((current) => current.filter((_, headerIndex) => headerIndex !== index));
+    setTableRows((current) => Object.fromEntries(options.map((option) => [option.label, (current[option.label] ?? []).filter((_, cellIndex) => cellIndex !== index)])));
+  }
+
+  function updateTableCell(label: string, columnIndex: number, value: string) {
+    setTableRows((current) => {
+      const row = [...(current[label] ?? Array.from({ length: tableHeaders.length }, () => ""))];
+      row[columnIndex] = value;
+      return { ...current, [label]: row };
+    });
   }
 
   function toggleNumberValue(value: number, selected: number[], setter: (values: number[]) => void) {
@@ -304,6 +372,17 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
       table_data: block.block_type === "table" ? { rows: tableRowsFromText(block.tableText) } : {},
       order: order + 1,
     }));
+  }
+
+  function optionTablePayload() {
+    if (optionLayout !== "table") return {};
+    return {
+      headers: tableHeaders,
+      rows: Object.fromEntries(options.map((option) => [
+        option.label,
+        tableHeaders.map((_, index) => tableRows[option.label]?.[index] ?? ""),
+      ])),
+    };
   }
 
   function optionPayloadBlocks() {
@@ -348,6 +427,7 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
           option_texts: Object.fromEntries(options.map((option) => [option.label, option.text])),
           option_asset_ids: Object.fromEntries(options.filter((option) => option.assetId).map((option) => [option.label, option.assetId])),
           option_blocks: optionPayloadBlocks(),
+          option_table: optionTablePayload(),
           layout_preset: layoutPreset,
           option_layout: optionLayout,
           subject,
@@ -384,6 +464,8 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
     setCorrectOption("A");
     setMarks(1);
     setOptions(defaultOptions);
+    setTableHeaders(defaultTableHeaders);
+    setTableRows(defaultTableRows);
     setStep("layout");
     setSourceQuestionNumber("");
     setNotes("");
@@ -419,7 +501,7 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
       const inline = piece.startsWith("$") && piece.endsWith("$");
       if (!display && !inline) return <span key={index}>{piece}</span>;
       const clean = piece.replace(/^\${1,2}|\${1,2}$/g, "");
-      return <span className={display ? "math-render display" : "math-render"} key={index}>{formatLatex(clean)}</span>;
+      return <LatexMath latex={clean} displayMode={display} key={index} />;
     });
   }
 
@@ -436,10 +518,24 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
       .replace(/_/g, "");
   }
 
+  function renderLatexToHtml(latex: string, displayMode = false) {
+    return katex.renderToString(latex || "\\square", {
+      displayMode,
+      throwOnError: false,
+      strict: "warn",
+      trust: false,
+      output: "html",
+    });
+  }
+
+  function LatexMath({ latex, displayMode = false }: { latex: string; displayMode?: boolean }) {
+    return <span className={displayMode ? "math-render display" : "math-render"} dangerouslySetInnerHTML={{ __html: renderLatexToHtml(latex, displayMode) }} />;
+  }
+
   function renderBlock(block: ContentBlockDraft) {
     const asset = assets.find((item) => item.id === block.assetId);
     if (block.block_type === "image") return asset ? <img className="a4-question-image" src={`${API_BASE}${asset.preview_url}`} alt={asset.original_name} /> : <p className="muted-preview">Image block</p>;
-    if (block.block_type === "equation") return <div className="math-render display">{formatLatex(block.text || "F = ma")}</div>;
+    if (block.block_type === "equation") return <LatexMath latex={block.text || "F = ma"} displayMode />;
     if (block.block_type === "table") {
       const rows = tableRowsFromText(block.tableText);
       return rows.length ? <table className="mcq-preview-table"><tbody>{rows.map((row, rowIndex) => <tr key={rowIndex}>{row.map((cell, cellIndex) => <td key={cellIndex}>{renderMathText(cell)}</td>)}</tr>)}</tbody></table> : <p className="muted-preview">Table block</p>;
@@ -454,10 +550,31 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
       <>
         <b>{option.label}.</b>
         {option.text ? <span className="option-text-fragment">{renderMathText(option.text)}</span> : null}
-        {option.equation ? <span className="math-render">{formatLatex(option.equation)}</span> : null}
+        {option.equation ? <LatexMath latex={option.equation} /> : null}
         {asset ? <img className="a4-option-image" src={`${API_BASE}${asset.preview_url}`} alt={`${option.label} option`} /> : null}
         {!option.text && !option.equation && !asset ? <span className="option-text-fragment">Answer option</span> : null}
       </>
+    );
+  }
+
+  function renderOptionTablePreview() {
+    return (
+      <table className="mcq-answer-table-preview">
+        <thead>
+          <tr>
+            <th />
+            {tableHeaders.map((header, index) => <th key={index}>{renderMathText(header)}</th>)}
+          </tr>
+        </thead>
+        <tbody>
+          {options.map((option) => (
+            <tr className={correctOption === option.label ? "correct" : ""} key={option.label}>
+              <th>{option.label}</th>
+              {tableHeaders.map((_, index) => <td key={index}>{renderMathText(tableRows[option.label]?.[index] ?? "")}</td>)}
+            </tr>
+          ))}
+        </tbody>
+      </table>
     );
   }
 
@@ -481,9 +598,9 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
           {step === "layout" ? (
             <div className="mcq-step-panel">
               <div className="section-intro compact"><strong>Pick the visual structure first</strong><span>The editor and preview will follow this structure while you enter the question.</span></div>
-              <div className="layout-card-grid">{layoutVisuals.map((item) => <button className={`layout-choice-card ${layoutPreset === item.value ? "active" : ""}`} key={item.value} onClick={() => setLayoutPreset(item.value)} type="button"><span className={`layout-thumbnail ${item.className}`}><i /><i /><i /><i /></span><strong>{item.title}</strong><small>{item.note}</small></button>)}</div>
+              <div className="layout-card-grid">{layoutVisuals.map((item) => <button className={`layout-choice-card ${layoutPreset === item.value ? "active" : ""}`} key={item.value} onClick={() => { setLayoutPreset(item.value); if (item.value === "table_options") setOptionLayout("table"); if (item.value === "option_grid") setOptionLayout("grid"); }} type="button"><span className={`layout-thumbnail ${item.className}`}><i /><i /><i /><i /></span><strong>{item.title}</strong><small>{item.note}</small></button>)}</div>
               <div className="section-intro compact"><strong>Answer choice arrangement</strong><span>Choose how A-D will be arranged on the generated paper.</span></div>
-              <div className="option-layout-card-grid">{optionLayoutVisuals.map((item) => <button className={`option-layout-card ${optionLayout === item.value ? "active" : ""}`} key={item.value} onClick={() => setOptionLayout(item.value)} type="button"><span className={`option-layout-thumbnail ${item.className}`}><i /><i /><i /><i /></span><strong>{item.title}</strong></button>)}</div>
+              <div className="option-layout-card-grid">{optionLayoutVisuals.map((item) => <button className={`option-layout-card ${optionLayout === item.value ? "active" : ""}`} key={item.value} onClick={() => { setOptionLayout(item.value); if (item.value === "table") setLayoutPreset("table_options"); if (item.value === "grid") setLayoutPreset("option_grid"); }} type="button"><span className={`option-layout-thumbnail ${item.className}`}><i /><i /><i /><i /></span><strong>{item.title}</strong></button>)}</div>
               <div className="option-entry-grid">
                 <label className="field-stack"><span>Marks</span><input type="number" min={0} value={marks} onChange={(event) => setMarks(Number(event.target.value || 1))} /></label>
                 <label className="field-stack"><span>Review status</span><select value={reviewStatus} onChange={(event) => setReviewStatus(event.target.value as MCQReviewStatus)}>{metadata?.review_statuses.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
@@ -511,7 +628,13 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
                       <button className="icon-button danger-icon" disabled={blocks.length <= 1} onClick={() => removeBlock(block.id)}><Trash2 size={15} /></button>
                     </div>
                     {block.block_type === "text" || block.block_type === "note" ? <textarea value={block.text} onChange={(event) => updateBlock(block.id, { text: event.target.value })} placeholder="Write the paragraph. Inline maths can use $v = u + at$." /> : null}
-                    {block.block_type === "equation" ? <input value={block.text} onChange={(event) => updateBlock(block.id, { text: event.target.value })} placeholder="Example: F = \\frac{mv^2}{r}" /> : null}
+                    {block.block_type === "equation" ? (
+                      <div className="equation-editor">
+                        <div className="equation-palette">{equationSnippets.map((snippet) => <button key={snippet.label} type="button" onClick={() => insertIntoBlock(block.id, snippet.value)}>{snippet.label}</button>)}</div>
+                        <input value={block.text} onChange={(event) => updateBlock(block.id, { text: event.target.value })} placeholder="Example: F = \\frac{mv^2}{r}" />
+                        <div className="equation-live-line"><LatexMath latex={block.text || "\\square"} /></div>
+                      </div>
+                    ) : null}
                     {block.block_type === "table" ? <textarea value={block.tableText} onChange={(event) => updateBlock(block.id, { tableText: event.target.value })} placeholder="Column 1 | Column 2&#10;value | value" /> : null}
                     {block.block_type === "image" ? (
                       <div className="asset-controls">
@@ -527,15 +650,50 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
 
           {step === "options" ? (
             <div className="mcq-step-panel">
-              <div className="option-editor-list">{options.map((option, index) => (
+              {optionLayout === "table" ? (
+                <div className="table-option-editor">
+                  <div className="section-intro compact"><strong>Table answer options</strong><span>Edit the headings and A-D row cells. Select the correct answer by clicking the row letter.</span></div>
+                  <div className="table-editor-actions">
+                    <button className="secondary-action" type="button" onClick={addTableColumn}><Plus size={15} />Add column</button>
+                    <button className="secondary-action" type="button" onClick={() => setOptionLayout("single")}>Use normal options</button>
+                  </div>
+                  <div className="answer-table-editor-grid" style={{ gridTemplateColumns: `72px repeat(${tableHeaders.length}, minmax(140px, 1fr)) 44px` }}>
+                    <div className="table-corner" />
+                    {tableHeaders.map((header, index) => (
+                      <input key={index} value={header} onChange={(event) => updateTableHeader(index, event.target.value)} placeholder={`heading ${index + 1}`} />
+                    ))}
+                    <div />
+                  </div>
+                  <div className="answer-table-body" style={{ gridTemplateColumns: `72px repeat(${tableHeaders.length}, minmax(140px, 1fr)) 44px` }}>
+                    {options.flatMap((option) => [
+                      <button className={`answer-row-select ${correctOption === option.label ? "correct" : ""}`} key={`${option.label}-select`} onClick={() => setCorrectOption(option.label)}>{option.label}</button>,
+                      ...tableHeaders.map((_, index) => <input key={`${option.label}-${index}`} value={tableRows[option.label]?.[index] ?? ""} onChange={(event) => updateTableCell(option.label, index, event.target.value)} placeholder="cell value" />),
+                      <button className="icon-button danger-icon" disabled={options.length <= 2} key={`${option.label}-delete`} onClick={() => removeOption(options.findIndex((item) => item.label === option.label))}><Trash2 size={15} /></button>,
+                    ])}
+                  </div>
+                  <div className="table-column-removers" style={{ gridTemplateColumns: `72px repeat(${tableHeaders.length}, minmax(140px, 1fr)) 44px` }}>
+                    <span />
+                    {tableHeaders.map((_, index) => <button className="mini-step-button" disabled={tableHeaders.length <= 1} key={index} onClick={() => removeTableColumn(index)}>Remove</button>)}
+                    <span />
+                  </div>
+                  <button className="secondary-action" onClick={addOption}><Plus size={16} />Add option row</button>
+                </div>
+              ) : (
+                <>
+                  <div className="option-editor-list">{options.map((option, index) => (
                 <div className={`option-editor-card ${correctOption === option.label ? "correct" : ""}`} key={option.label}>
                   <div className="option-card-head"><button className="option-letter" onClick={() => setCorrectOption(option.label)} title="Mark as correct">{option.label}</button><strong>{correctOption === option.label ? "Correct answer" : "Answer option"}</strong><button className="icon-button" disabled={options.length <= 2} onClick={() => removeOption(index)}><Trash2 size={15} /></button></div>
                   <textarea value={option.text} onChange={(event) => updateOption(index, { text: event.target.value })} placeholder={`Option ${option.label} text. Inline maths can use $\\frac{1}{2}mv^2$.`} />
-                  <input className="option-equation-input" value={option.equation} onChange={(event) => updateOption(index, { equation: event.target.value })} placeholder="Optional separate equation, e.g. E = mc^2" />
+                  <div className="equation-editor compact">
+                    <div className="equation-palette">{equationSnippets.slice(0, 8).map((snippet) => <button key={snippet.label} type="button" onClick={() => insertIntoOptionEquation(index, snippet.value)}>{snippet.label}</button>)}</div>
+                    <input className="option-equation-input" value={option.equation} onChange={(event) => updateOption(index, { equation: event.target.value })} placeholder="Optional separate equation, e.g. E = mc^2" />
+                  </div>
                   <div className="option-asset-row"><label className="compact-upload-button"><UploadCloud size={15} />Upload image<input type="file" accept="image/*" disabled={isUploadingAsset} onChange={(event) => uploadAsset(event.target.files?.[0] ?? null, "option", (asset) => updateOption(index, { assetId: asset.id }))} /></label><select value={option.assetId ?? ""} onChange={(event) => updateOption(index, { assetId: event.target.value ? Number(event.target.value) : null })}><option value="">No option image</option>{assets.map((asset) => <option value={asset.id} key={asset.id}>{asset.original_name}</option>)}</select>{option.assetId ? <button className="secondary-action" type="button" onClick={() => updateOption(index, { assetId: null })}>Remove</button> : null}</div>
                 </div>
-              ))}</div>
-              <button className="secondary-action" onClick={addOption}><Plus size={16} />Add option</button>
+                  ))}</div>
+                  <button className="secondary-action" onClick={addOption}><Plus size={16} />Add option</button>
+                </>
+              )}
             </div>
           ) : null}
 
@@ -571,7 +729,7 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
           <div className={`a4-preview-card mcq-layout-${layoutPreset}`}>
             <div className="paper-question-number">1</div>
             <div className="question-block-preview">{blocks.filter(blockHasContent).length ? blocks.filter(blockHasContent).map((block) => <div className={`preview-content-block ${block.block_type}`} key={block.id}>{renderBlock(block)}</div>) : <p className="muted-preview">Add text, equation, image, or table blocks to build the question.</p>}</div>
-            <div className={`option-preview-grid layout-${optionLayout}`}>{options.map((option) => <span className={correctOption === option.label ? "correct" : ""} key={option.label}>{renderOption(option)}</span>)}</div>
+            {optionLayout === "table" ? renderOptionTablePreview() : <div className={`option-preview-grid layout-${optionLayout}`}>{options.map((option) => <span className={correctOption === option.label ? "correct" : ""} key={option.label}>{renderOption(option)}</span>)}</div>}
           </div>
           <div className="metadata-mini"><span><Check size={15} />{reviewStatus.replace("_", " ")}</span><span>{marks} mark</span><span>{optionLayout.replace("_", " ")}</span></div>
         </aside>

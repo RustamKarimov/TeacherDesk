@@ -253,3 +253,34 @@ class MCQApiTests(TestCase):
         option = question.options.get(label="A")
         self.assertEqual(option.blocks.filter(block_type=MCQOptionBlock.BlockType.IMAGE, asset=asset).count(), 1)
         self.assertEqual(response.json()["options"][0]["blocks"][0]["asset"]["original_name"], "option_graph.png")
+
+    def test_create_question_with_table_answer_options(self):
+        response = self.client.post(
+            "/api/mcq/questions/create/",
+            data=json.dumps(
+                {
+                    "title": "Scalar vector table",
+                    "question_blocks": [{"block_type": "text", "text": "Which row is correct?"}],
+                    "marks": 1,
+                    "correct_option": "B",
+                    "option_layout": "table",
+                    "option_table": {
+                        "headers": ["acceleration", "charge", "kinetic energy", "wavelength"],
+                        "rows": {
+                            "A": ["scalar", "vector", "vector", "scalar"],
+                            "B": ["vector", "vector", "scalar", "scalar"],
+                            "C": ["scalar", "scalar", "scalar", "vector"],
+                            "D": ["vector", "scalar", "scalar", "scalar"],
+                        },
+                    },
+                }
+            ),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        question = MCQQuestion.objects.get(title="Scalar vector table")
+        option = question.options.get(label="B")
+        self.assertEqual(option.layout_settings["table_headers"][0], "acceleration")
+        self.assertEqual(option.layout_settings["table_cells"], ["vector", "vector", "scalar", "scalar"])
+        self.assertEqual(option.blocks.first().text, "vector | vector | scalar | scalar")

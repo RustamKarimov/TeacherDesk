@@ -4781,10 +4781,7 @@ td,
   display: inline-flex;
   align-items: center;
   border-radius: 5px;
-  background: #eef6ff;
   color: #12396a;
-  font-family: "Cambria Math", "Times New Roman", serif;
-  font-style: italic;
   padding: 1px 5px;
 }
 
@@ -4796,6 +4793,10 @@ td,
   font-size: 18px;
 }
 
+.math-render .katex {
+  font-size: 1.04em;
+}
+
 .mcq-preview-table {
   width: 100%;
   border-collapse: collapse;
@@ -4805,6 +4806,36 @@ td,
 .mcq-preview-table td {
   border: 1px solid #cfd8e3;
   padding: 7px 8px;
+}
+
+.mcq-answer-table-preview {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 18px;
+  color: #111827;
+  font-size: 14px;
+}
+
+.mcq-answer-table-preview th,
+.mcq-answer-table-preview td {
+  border: 1.5px solid #111827;
+  padding: 8px 10px;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.mcq-answer-table-preview thead th {
+  font-size: 15px;
+  font-weight: 650;
+}
+
+.mcq-answer-table-preview tbody th {
+  width: 34px;
+  font-weight: 800;
+}
+
+.mcq-answer-table-preview tr.correct {
+  background: #ecfdf5;
 }
 
 .a4-question-image {
@@ -5015,6 +5046,95 @@ td,
   resize: vertical;
 }
 
+.equation-editor {
+  display: grid;
+  gap: 8px;
+}
+
+.equation-editor.compact {
+  gap: 7px;
+}
+
+.equation-palette {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.equation-palette button {
+  min-height: 30px;
+  border: 1px solid var(--line, #d8e1eb);
+  border-radius: 7px;
+  background: var(--field-bg, #ffffff);
+  color: var(--text-main, var(--text, #172033));
+  padding: 0 9px;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.equation-palette button:hover {
+  border-color: var(--primary, #14b8a6);
+}
+
+.equation-live-line {
+  border: 1px solid var(--line, #d8e1eb);
+  border-radius: 8px;
+  background: #ffffff;
+  color: #111827;
+  padding: 10px;
+}
+
+.table-option-editor {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.table-editor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.answer-table-editor-grid,
+.answer-table-body,
+.table-column-removers {
+  display: grid;
+  gap: 8px;
+  align-items: center;
+  overflow-x: auto;
+}
+
+.answer-table-editor-grid input,
+.answer-table-body input {
+  min-height: 42px;
+  border: 1px solid var(--line, #d8e1eb);
+  border-radius: 8px;
+  background: var(--field-bg, var(--input-bg, #ffffff));
+  color: var(--text, #172033);
+  padding: 0 10px;
+}
+
+.answer-row-select,
+.answer-table-row-label {
+  display: grid;
+  min-height: 42px;
+  place-items: center;
+  border: 1px solid var(--line, #d8e1eb);
+  border-radius: 8px;
+  background: var(--panel-bg-soft, #f8fafc);
+  color: var(--text-main, var(--text, #172033));
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.answer-row-select.correct,
+.answer-table-row-label.correct {
+  border-color: var(--primary, #14b8a6);
+  background: color-mix(in srgb, var(--primary, #14b8a6) 20%, var(--panel-bg));
+}
+
 .mini-step-button {
   min-height: 30px;
   border: 1px solid var(--line, #d8e1eb);
@@ -5118,11 +5238,36 @@ td,
 }
 
 .layout-thumbnail.option-grid,
-.layout-thumbnail.table-options,
 .option-layout-thumbnail.grid,
 .option-layout-thumbnail.table {
   grid-template-columns: repeat(2, 1fr);
   grid-template-rows: repeat(2, 1fr);
+}
+
+.layout-thumbnail.option-grid i,
+.option-layout-thumbnail.grid i {
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, transparent 47%, color-mix(in srgb, var(--blue, #60a5fa) 65%, transparent) 48% 52%, transparent 53%),
+    color-mix(in srgb, var(--blue, #60a5fa) 20%, transparent);
+}
+
+.layout-thumbnail.table-options,
+.option-layout-thumbnail.table {
+  grid-template-columns: 0.38fr repeat(3, 1fr);
+  grid-template-rows: repeat(4, 1fr);
+  gap: 2px;
+}
+
+.layout-thumbnail.table-options i,
+.option-layout-thumbnail.table i {
+  border-radius: 1px;
+  background: color-mix(in srgb, var(--text-muted, #71839a) 35%, transparent);
+}
+
+.layout-thumbnail.table-options i:first-child,
+.option-layout-thumbnail.table i:first-child {
+  background: color-mix(in srgb, var(--primary, #14b8a6) 50%, transparent);
 }
 
 .layout-thumbnail.compact {

@@ -549,12 +549,30 @@ def _apply_question_payload(question: MCQQuestion, payload: dict[str, object], v
     if not isinstance(option_labels, list) or not option_labels:
         option_labels = ["A", "B", "C", "D"]
     correct_label = str(payload.get("correct_option") or "").strip().upper()
+    option_table = payload.get("option_table") if isinstance(payload.get("option_table"), dict) else {}
+    option_table_headers = option_table.get("headers") if isinstance(option_table.get("headers"), list) else []
+    option_table_rows = option_table.get("rows") if isinstance(option_table.get("rows"), dict) else {}
     for index, label in enumerate(option_labels):
         normalized_label = str(label or "").strip().upper()[:8]
         if not normalized_label:
             continue
-        option = MCQOption.objects.create(question=question, label=normalized_label, order=index + 1, is_correct=normalized_label == correct_label)
+        table_cells = option_table_rows.get(normalized_label)
+        layout_settings = {}
+        if isinstance(table_cells, list):
+            layout_settings = {
+                "table_headers": [str(header) for header in option_table_headers],
+                "table_cells": [str(cell) for cell in table_cells],
+            }
+        option = MCQOption.objects.create(
+            question=question,
+            label=normalized_label,
+            order=index + 1,
+            is_correct=normalized_label == correct_label,
+            layout_settings=layout_settings,
+        )
         option_text = str((payload.get("option_texts") or {}).get(normalized_label, "")).strip()
+        if isinstance(table_cells, list) and not option_text:
+            option_text = " | ".join(str(cell).strip() for cell in table_cells if str(cell).strip())
         option_blocks = (payload.get("option_blocks") or {}).get(normalized_label)
         if isinstance(option_blocks, list):
             block_order = 1
