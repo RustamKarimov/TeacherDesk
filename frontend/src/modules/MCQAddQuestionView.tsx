@@ -1,4 +1,14 @@
-import { Check, GripVertical, Image, Plus, Save, Sigma, Table2, Text, Trash2, UploadCloud } from "lucide-react";
+import { AlignCenter, AlignLeft, AlignRight, Bold, Check, Heading2, Image, Italic, List, Plus, Redo2, Save, Sigma, Table2, Trash2, Underline, Undo2, UploadCloud } from "lucide-react";
+import { EditorContent, type JSONContent, useEditor } from "@tiptap/react";
+import StarterKit from "@tiptap/starter-kit";
+import TiptapImage from "@tiptap/extension-image";
+import { Table as TiptapTable } from "@tiptap/extension-table";
+import TableCell from "@tiptap/extension-table-cell";
+import TableHeader from "@tiptap/extension-table-header";
+import TableRow from "@tiptap/extension-table-row";
+import TextAlign from "@tiptap/extension-text-align";
+import TiptapUnderline from "@tiptap/extension-underline";
+import Placeholder from "@tiptap/extension-placeholder";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import katex from "katex";
 import "katex/dist/katex.min.css";
@@ -45,6 +55,7 @@ type MCQQuestionDetailPayload = {
   tags: Array<{ id: number; name: string }>;
   notes: string;
   teacher_notes: string;
+  layout_settings: { rich_content?: JSONContent; rich_text?: string; rich_html?: string };
   blocks: Array<{ block_type: string; text: string; asset_id: number | null; asset: MCQAsset | null; table_data?: { rows?: string[][] }; order: number }>;
   options: Array<{
     label: string;
@@ -87,6 +98,16 @@ const newId = () => Math.random().toString(36).slice(2);
 
 const defaultBlocks: ContentBlockDraft[] = [{ id: newId(), block_type: "text", text: "", assetId: null, tableText: "" }];
 
+const defaultRichContent: JSONContent = {
+  type: "doc",
+  content: [
+    {
+      type: "paragraph",
+      content: [],
+    },
+  ],
+};
+
 const defaultOptions: OptionDraft[] = [
   { label: "A", text: "", equation: "", assetId: null },
   { label: "B", text: "", equation: "", assetId: null },
@@ -94,33 +115,36 @@ const defaultOptions: OptionDraft[] = [
   { label: "D", text: "", equation: "", assetId: null },
 ];
 
-const defaultTableHeaders = ["acceleration", "charge", "kinetic energy", "wavelength"];
+const defaultTableHeaders = ["Column 1", "Column 2", "Column 3", "Column 4"];
 const defaultTableRows: Record<string, string[]> = {
-  A: ["scalar", "vector", "vector", "scalar"],
-  B: ["vector", "vector", "scalar", "scalar"],
-  C: ["scalar", "scalar", "scalar", "vector"],
-  D: ["vector", "scalar", "scalar", "scalar"],
+  A: ["", "", "", ""],
+  B: ["", "", "", ""],
+  C: ["", "", "", ""],
+  D: ["", "", "", ""],
 };
 
 const equationSnippets = [
-  { label: "Fraction", value: "\\frac{a}{b}" },
-  { label: "Power", value: "x^{2}" },
-  { label: "Subscript", value: "v_{x}" },
-  { label: "Root", value: "\\sqrt{x}" },
-  { label: "Vector", value: "\\vec{F}" },
-  { label: "Theta", value: "\\theta" },
-  { label: "Delta", value: "\\Delta" },
-  { label: "Pi", value: "\\pi" },
-  { label: "Sum", value: "\\sum_{i=1}^{n}" },
-  { label: "Integral", value: "\\int_{a}^{b}" },
-  { label: "Limit", value: "\\lim_{x\\to 0}" },
-  { label: "Matrix", value: "\\begin{bmatrix} a & b \\\\ c & d \\end{bmatrix}" },
+  { label: "a/b", value: "\\frac{a}{b}", title: "Fraction" },
+  { label: "x²", value: "x^{2}", title: "Power" },
+  { label: "xₙ", value: "x_{n}", title: "Subscript" },
+  { label: "√x", value: "\\sqrt{x}", title: "Square root" },
+  { label: "F⃗", value: "\\vec{F}", title: "Vector" },
+  { label: "θ", value: "\\theta", title: "Theta" },
+  { label: "Δ", value: "\\Delta", title: "Delta" },
+  { label: "π", value: "\\pi", title: "Pi" },
+  { label: "Σ", value: "\\sum_{i=1}^{n}", title: "Summation" },
+  { label: "∫", value: "\\int_{a}^{b}", title: "Integral" },
+  { label: "lim", value: "\\lim_{x\\to 0}", title: "Limit" },
+  { label: "[ ]", value: "\\begin{bmatrix} a & b \\\\ c & d \\end{bmatrix}", title: "Matrix" },
 ];
 
 export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: number | null; onSaved: () => void }) {
   const [metadata, setMetadata] = useState<MCQMetadataPayload | null>(null);
   const [step, setStep] = useState<EditorStep>("layout");
   const [blocks, setBlocks] = useState<ContentBlockDraft[]>(defaultBlocks);
+  const [richContent, setRichContent] = useState<JSONContent>(defaultRichContent);
+  const [richHtml, setRichHtml] = useState("");
+  const [richText, setRichText] = useState("");
   const [assets, setAssets] = useState<MCQAsset[]>([]);
   const [isUploadingAsset, setIsUploadingAsset] = useState(false);
   const [correctOption, setCorrectOption] = useState("A");
@@ -154,6 +178,40 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
     return selectedTopics.flatMap((topic) => topic.subtopics.map((subtopic) => ({ ...subtopic, topicName: topic.name })));
   }, [metadata, topicIds]);
 
+  const richEditor = useEditor({
+    extensions: [
+      StarterKit,
+      TiptapUnderline,
+      Placeholder.configure({
+        placeholder: "Write the question here. Use $v = u + at$ for inline equations, or insert images and tables from the toolbar.",
+      }),
+      TiptapImage.configure({ allowBase64: false, inline: false }),
+      TiptapTable.configure({ resizable: true }),
+      TableRow,
+      TableHeader,
+      TableCell,
+      TextAlign.configure({ types: ["heading", "paragraph"] }),
+    ],
+    content: richContent,
+    editorProps: {
+      attributes: {
+        class: "a4-rich-editor-content",
+      },
+    },
+    onUpdate: ({ editor }) => {
+      setRichContent(editor.getJSON());
+      setRichHtml(editor.getHTML());
+      setRichText(editor.getText({ blockSeparator: "\n" }));
+    },
+  });
+
+  useEffect(() => {
+    if (!richEditor) return;
+    richEditor.commands.setContent(richContent);
+    setRichHtml(richEditor.getHTML());
+    setRichText(richEditor.getText({ blockSeparator: "\n" }));
+  }, [richEditor]);
+
   useEffect(() => {
     fetch(`${API_BASE}/api/mcq/metadata/`)
       .then((response) => readJson<MCQMetadataPayload>(response))
@@ -184,6 +242,62 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
     return text.split("\n").map((row) => row.split("|").map((cell) => cell.trim())).filter((row) => row.some(Boolean));
   }
 
+  function setRichEditorContent(content: JSONContent) {
+    setRichContent(content);
+    if (richEditor) {
+      richEditor.commands.setContent(content);
+      setRichHtml(richEditor.getHTML());
+      setRichText(richEditor.getText({ blockSeparator: "\n" }));
+    }
+  }
+
+  function richContentHasContent(content = richContent) {
+    const walk = (node?: JSONContent): boolean => {
+      if (!node) return false;
+      if (typeof node.text === "string" && node.text.trim()) return true;
+      if (node.type === "image" && typeof node.attrs?.src === "string" && node.attrs.src) return true;
+      return Array.isArray(node.content) ? node.content.some(walk) : false;
+    };
+    return walk(content);
+  }
+
+  function richPlainText(content = richContent): string {
+    const parts: string[] = [];
+    const walk = (node?: JSONContent) => {
+      if (!node) return;
+      if (typeof node.text === "string") parts.push(node.text);
+      if (node.type === "paragraph" || node.type === "heading" || node.type === "listItem") parts.push("\n");
+      node.content?.forEach(walk);
+      if (node.type === "tableRow") parts.push("\n");
+    };
+    walk(content);
+    return parts.join(" ").replace(/[ \t]+\n/g, "\n").replace(/\s+/g, " ").trim();
+  }
+
+  function blocksToRichContent(sourceBlocks: ContentBlockDraft[]): JSONContent {
+    const content = sourceBlocks.filter(blockHasContent).flatMap((block): JSONContent[] => {
+      const asset = block.assetId ? assets.find((item) => item.id === block.assetId) : null;
+      if (block.block_type === "image" && asset) return [{ type: "image", attrs: { src: `${API_BASE}${asset.preview_url}`, alt: asset.original_name } }];
+      if (block.block_type === "equation") return [{ type: "paragraph", content: [{ type: "text", text: `$$${block.text}$$` }] }];
+      if (block.block_type === "table") {
+        const rows = tableRowsFromText(block.tableText);
+        return rows.length
+          ? [{
+              type: "table",
+              content: rows.map((row) => ({
+                type: "tableRow",
+                content: row.map((cell) => ({ type: "tableCell", content: [{ type: "paragraph", content: cell ? [{ type: "text", text: cell }] : [] }] })),
+              })),
+            }]
+          : [];
+      }
+      return block.text
+        ? block.text.split(/\n{2,}/).filter(Boolean).map((paragraph) => ({ type: "paragraph", content: [{ type: "text", text: paragraph.trim() }] }))
+        : [];
+    });
+    return { type: "doc", content: content.length ? content : defaultRichContent.content };
+  }
+
   function loadQuestionIntoForm(question: MCQQuestionDetailPayload) {
     const nextBlocks = question.blocks.length
       ? question.blocks
@@ -201,6 +315,7 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
       if (block.asset) setAssets((current) => (current.some((asset) => asset.id === block.asset?.id) ? current : [block.asset!, ...current]));
     });
     setBlocks(nextBlocks);
+    setRichEditorContent(question.layout_settings?.rich_content || blocksToRichContent(nextBlocks));
     setCorrectOption(question.options.find((option) => option.is_correct)?.label ?? "A");
     setMarks(question.marks ?? 1);
     setOptions(
@@ -283,7 +398,7 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
   function buildAutomaticTitle() {
     const sourceLabel = [examCode, sourceQuestionNumber].filter(Boolean).join(" ");
     if (sourceLabel) return sourceLabel;
-    const firstText = blocks.map((block) => block.text).join(" ").replace(/\s+/g, " ").trim();
+    const firstText = richPlainText() || blocks.map((block) => block.text).join(" ").replace(/\s+/g, " ").trim();
     if (firstText) return firstText.slice(0, 90);
     return assets.find((asset) => asset.id === blocks.find((block) => block.assetId)?.assetId)?.original_name || "Image-only MCQ question";
   }
@@ -365,6 +480,8 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
   }
 
   function questionPayloadBlocks() {
+    const text = richPlainText();
+    if (text) return [{ block_type: "text", text, asset_id: null, table_data: {}, order: 1 }];
     return blocks.filter(blockHasContent).map((block, order) => ({
       block_type: block.block_type,
       text: block.text,
@@ -399,8 +516,8 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
   async function saveQuestion(stayOnPage = false) {
     setStatus(null);
     setError(null);
-    if (!blocks.some(blockHasContent)) {
-      setError("Add at least one question content block before saving.");
+    if (!richContentHasContent() && !blocks.some(blockHasContent)) {
+      setError("Add question content before saving. You can type, insert an equation, add an image, or add a table.");
       setStep("question");
       return;
     }
@@ -430,6 +547,11 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
           option_table: optionTablePayload(),
           layout_preset: layoutPreset,
           option_layout: optionLayout,
+          layout_settings: {
+            rich_content: richContent,
+            rich_html: richHtml,
+            rich_text: richText || richPlainText(),
+          },
           subject,
           syllabus,
           exam_code: examCode,
@@ -461,6 +583,7 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
 
   function resetForm() {
     setBlocks(defaultBlocks.map((block) => ({ ...block, id: newId() })));
+    setRichEditorContent(defaultRichContent);
     setCorrectOption("A");
     setMarks(1);
     setOptions(defaultOptions);
@@ -492,6 +615,17 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
     } finally {
       setIsUploadingAsset(false);
     }
+  }
+
+  function insertEditorMath(snippet: string, displayMode = false) {
+    if (!richEditor) return;
+    richEditor.chain().focus().insertContent(displayMode ? `\n$$${snippet}$$\n` : `$${snippet}$`).run();
+  }
+
+  async function uploadEditorImage(file: File | null) {
+    await uploadAsset(file, "question", (asset) => {
+      richEditor?.chain().focus().setImage({ src: `${API_BASE}${asset.preview_url}`, alt: asset.original_name }).run();
+    });
   }
 
   function renderMathText(text: string): ReactNode[] {
@@ -530,6 +664,33 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
 
   function LatexMath({ latex, displayMode = false }: { latex: string; displayMode?: boolean }) {
     return <span className={displayMode ? "math-render display" : "math-render"} dangerouslySetInnerHTML={{ __html: renderLatexToHtml(latex, displayMode) }} />;
+  }
+
+  function renderRichNode(node: JSONContent, key = "node"): ReactNode {
+    const children = node.content?.map((child, index) => renderRichNode(child, `${key}-${index}`));
+    if (node.type === "doc") return <>{children}</>;
+    if (node.type === "paragraph") return <p key={key}>{children}</p>;
+    if (node.type === "heading") {
+      const level = Math.min(Number(node.attrs?.level || 2), 3);
+      return level === 1 ? <h1 key={key}>{children}</h1> : level === 2 ? <h2 key={key}>{children}</h2> : <h3 key={key}>{children}</h3>;
+    }
+    if (node.type === "bulletList") return <ul key={key}>{children}</ul>;
+    if (node.type === "orderedList") return <ol key={key}>{children}</ol>;
+    if (node.type === "listItem") return <li key={key}>{children}</li>;
+    if (node.type === "hardBreak") return <br key={key} />;
+    if (node.type === "image") return <img className="a4-question-image" key={key} src={String(node.attrs?.src || "")} alt={String(node.attrs?.alt || "Question image")} />;
+    if (node.type === "table") return <table className="mcq-preview-table rich-table" key={key}><tbody>{children}</tbody></table>;
+    if (node.type === "tableRow") return <tr key={key}>{children}</tr>;
+    if (node.type === "tableHeader") return <th key={key}>{children}</th>;
+    if (node.type === "tableCell") return <td key={key}>{children}</td>;
+    if (node.type === "text") {
+      let rendered: ReactNode = renderMathText(node.text || "");
+      if (node.marks?.some((mark) => mark.type === "bold")) rendered = <strong key={key}>{rendered}</strong>;
+      if (node.marks?.some((mark) => mark.type === "italic")) rendered = <em key={key}>{rendered}</em>;
+      if (node.marks?.some((mark) => mark.type === "underline")) rendered = <u key={key}>{rendered}</u>;
+      return <span key={key}>{rendered}</span>;
+    }
+    return <span key={key}>{children}</span>;
   }
 
   function renderBlock(block: ContentBlockDraft) {
@@ -610,40 +771,32 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
 
           {step === "question" ? (
             <div className="mcq-step-panel">
-              <div className="block-toolbar">
-                <button onClick={() => addBlock("text")}><Text size={16} />Text</button>
-                <button onClick={() => addBlock("equation")}><Sigma size={16} />Equation</button>
-                <button onClick={() => addBlock("image")}><Image size={16} />Image</button>
-                <button onClick={() => addBlock("table")}><Table2 size={16} />Table</button>
-                <button onClick={() => addBlock("note")}><Plus size={16} />Note</button>
-              </div>
-              <div className="content-block-list">
-                {blocks.map((block, index) => (
-                  <div className="content-block-card" key={block.id}>
-                    <div className="content-block-head">
-                      <GripVertical size={16} />
-                      <strong>{block.block_type === "text" ? "Text paragraph" : block.block_type === "equation" ? "Equation" : block.block_type === "image" ? "Image" : block.block_type === "table" ? "Table" : "Teacher note"}</strong>
-                      <button className="mini-step-button" disabled={index === 0} onClick={() => moveBlock(block.id, -1)}>Up</button>
-                      <button className="mini-step-button" disabled={index === blocks.length - 1} onClick={() => moveBlock(block.id, 1)}>Down</button>
-                      <button className="icon-button danger-icon" disabled={blocks.length <= 1} onClick={() => removeBlock(block.id)}><Trash2 size={15} /></button>
-                    </div>
-                    {block.block_type === "text" || block.block_type === "note" ? <textarea value={block.text} onChange={(event) => updateBlock(block.id, { text: event.target.value })} placeholder="Write the paragraph. Inline maths can use $v = u + at$." /> : null}
-                    {block.block_type === "equation" ? (
-                      <div className="equation-editor">
-                        <div className="equation-palette">{equationSnippets.map((snippet) => <button key={snippet.label} type="button" onClick={() => insertIntoBlock(block.id, snippet.value)}>{snippet.label}</button>)}</div>
-                        <input value={block.text} onChange={(event) => updateBlock(block.id, { text: event.target.value })} placeholder="Example: F = \\frac{mv^2}{r}" />
-                        <div className="equation-live-line"><LatexMath latex={block.text || "\\square"} /></div>
-                      </div>
-                    ) : null}
-                    {block.block_type === "table" ? <textarea value={block.tableText} onChange={(event) => updateBlock(block.id, { tableText: event.target.value })} placeholder="Column 1 | Column 2&#10;value | value" /> : null}
-                    {block.block_type === "image" ? (
-                      <div className="asset-controls">
-                        <label className="compact-upload-button"><UploadCloud size={16} />{isUploadingAsset ? "Uploading..." : "Upload image"}<input type="file" accept="image/*" disabled={isUploadingAsset} onChange={(event) => uploadAsset(event.target.files?.[0] ?? null, "question", (asset) => updateBlock(block.id, { assetId: asset.id }))} /></label>
-                        <select value={block.assetId ?? ""} onChange={(event) => updateBlock(block.id, { assetId: event.target.value ? Number(event.target.value) : null })}><option value="">No image attached</option>{assets.map((asset) => <option value={asset.id} key={asset.id}>{asset.original_name}</option>)}</select>
-                      </div>
-                    ) : null}
+              <div className="section-intro compact"><strong>Write the question on the A4 canvas</strong><span>Type normally, insert equations with LaTeX shortcuts, and add images or tables where they belong.</span></div>
+              <div className="rich-editor-shell">
+                <div className="rich-editor-toolbar">
+                  <button className={richEditor?.isActive("bold") ? "active" : ""} type="button" onClick={() => richEditor?.chain().focus().toggleBold().run()} title="Bold"><Bold size={16} /></button>
+                  <button className={richEditor?.isActive("italic") ? "active" : ""} type="button" onClick={() => richEditor?.chain().focus().toggleItalic().run()} title="Italic"><Italic size={16} /></button>
+                  <button className={richEditor?.isActive("underline") ? "active" : ""} type="button" onClick={() => richEditor?.chain().focus().toggleUnderline().run()} title="Underline"><Underline size={16} /></button>
+                  <button className={richEditor?.isActive("heading", { level: 2 }) ? "active" : ""} type="button" onClick={() => richEditor?.chain().focus().toggleHeading({ level: 2 }).run()} title="Heading"><Heading2 size={16} /></button>
+                  <button className={richEditor?.isActive("bulletList") ? "active" : ""} type="button" onClick={() => richEditor?.chain().focus().toggleBulletList().run()} title="Bullet list"><List size={16} /></button>
+                  <button type="button" onClick={() => richEditor?.chain().focus().setTextAlign("left").run()} title="Align left"><AlignLeft size={16} /></button>
+                  <button type="button" onClick={() => richEditor?.chain().focus().setTextAlign("center").run()} title="Align center"><AlignCenter size={16} /></button>
+                  <button type="button" onClick={() => richEditor?.chain().focus().setTextAlign("right").run()} title="Align right"><AlignRight size={16} /></button>
+                  <button type="button" onClick={() => richEditor?.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()} title="Insert table"><Table2 size={16} /></button>
+                  <label className="rich-upload-button" title="Insert image"><Image size={16} /><input type="file" accept="image/*" disabled={isUploadingAsset} onChange={(event) => uploadEditorImage(event.target.files?.[0] ?? null)} /></label>
+                  <button type="button" onClick={() => richEditor?.chain().focus().undo().run()} title="Undo"><Undo2 size={16} /></button>
+                  <button type="button" onClick={() => richEditor?.chain().focus().redo().run()} title="Redo"><Redo2 size={16} /></button>
+                </div>
+                <div className="rich-equation-palette">
+                  <span><Sigma size={15} />Inline equation shortcuts</span>
+                  {equationSnippets.map((snippet) => <button key={snippet.title} type="button" title={snippet.title} onClick={() => insertEditorMath(snippet.value)}>{snippet.label}</button>)}
+                  <button type="button" onClick={() => insertEditorMath("\\frac{mv^2}{r}", true)}>Display</button>
+                </div>
+                <div className="a4-editor-stage">
+                  <div className="a4-editor-page">
+                    <EditorContent editor={richEditor} />
                   </div>
-                ))}
+                </div>
               </div>
             </div>
           ) : null}
@@ -726,10 +879,12 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
 
         <aside className="panel mcq-preview-panel sticky-preview">
           <div className="dashboard-widget-head"><div><strong>A4 live preview</strong><span>Student-facing layout, using your selected structure.</span></div></div>
-          <div className={`a4-preview-card mcq-layout-${layoutPreset}`}>
-            <div className="paper-question-number">1</div>
-            <div className="question-block-preview">{blocks.filter(blockHasContent).length ? blocks.filter(blockHasContent).map((block) => <div className={`preview-content-block ${block.block_type}`} key={block.id}>{renderBlock(block)}</div>) : <p className="muted-preview">Add text, equation, image, or table blocks to build the question.</p>}</div>
-            {optionLayout === "table" ? renderOptionTablePreview() : <div className={`option-preview-grid layout-${optionLayout}`}>{options.map((option) => <span className={correctOption === option.label ? "correct" : ""} key={option.label}>{renderOption(option)}</span>)}</div>}
+          <div className="a4-preview-viewport">
+            <div className={`a4-preview-card mcq-layout-${layoutPreset}`}>
+              <div className="paper-question-number">1</div>
+              <div className="question-block-preview rich-preview-content">{richContentHasContent() ? renderRichNode(richContent) : <p className="muted-preview">Write the question, insert equations, add images, or create a table.</p>}</div>
+              {optionLayout === "table" ? renderOptionTablePreview() : <div className={`option-preview-grid layout-${optionLayout}`}>{options.map((option) => <span className={correctOption === option.label ? "correct" : ""} key={option.label}>{renderOption(option)}</span>)}</div>}
+            </div>
           </div>
           <div className="metadata-mini"><span><Check size={15} />{reviewStatus.replace("_", " ")}</span><span>{marks} mark</span><span>{optionLayout.replace("_", " ")}</span></div>
         </aside>

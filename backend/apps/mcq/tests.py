@@ -223,6 +223,33 @@ class MCQApiTests(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("question text or attach a question image", response.json()["error"])
 
+    def test_create_question_accepts_rich_editor_content(self):
+        rich_content = {
+            "type": "doc",
+            "content": [
+                {"type": "paragraph", "content": [{"type": "text", "text": "Use $F = ma$."}]},
+                {"type": "table", "content": [{"type": "tableRow", "content": [{"type": "tableCell", "content": [{"type": "paragraph"}]}]}]},
+            ],
+        }
+
+        response = self.client.post(
+            "/api/mcq/questions/create/",
+            data=json.dumps(
+                {
+                    "title": "Rich editor question",
+                    "layout_settings": {"rich_content": rich_content, "rich_text": "Use $F = ma$."},
+                    "marks": 1,
+                    "correct_option": "A",
+                    "option_texts": {"A": "Yes", "B": "No"},
+                }
+            ),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        question = MCQQuestion.objects.get(title="Rich editor question")
+        self.assertEqual(question.layout_settings["rich_content"], rich_content)
+
     def test_create_question_with_option_image(self):
         asset_path = self.test_root / "option_graph.png"
         asset_path.write_bytes(b"\x89PNG\r\n\x1a\nfake-option-image")

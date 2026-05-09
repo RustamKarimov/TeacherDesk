@@ -465,6 +465,9 @@ def _validate_question_content(payload: dict[str, object], library) -> JsonRespo
     text = str(payload.get("question_text") or "").strip()
     asset_id = payload.get("question_asset_id")
     question_blocks = payload.get("question_blocks") or []
+    layout_settings = payload.get("layout_settings") if isinstance(payload.get("layout_settings"), dict) else {}
+    rich_text = str(layout_settings.get("rich_text") or "").strip()
+    rich_content = layout_settings.get("rich_content") if isinstance(layout_settings.get("rich_content"), dict) else {}
     has_block_content = False
     if isinstance(question_blocks, list):
         for block in question_blocks:
@@ -473,7 +476,8 @@ def _validate_question_content(payload: dict[str, object], library) -> JsonRespo
             if str(block.get("text") or "").strip() or block.get("asset_id") or block.get("table_data"):
                 has_block_content = True
                 break
-    if not text and not asset_id and not has_block_content:
+    has_rich_content = bool(rich_text or rich_content.get("content"))
+    if not text and not asset_id and not has_block_content and not has_rich_content:
         return JsonResponse({"error": "Add question text or attach a question image before saving."}, status=400)
     if asset_id and not MCQImageAsset.objects.filter(id=asset_id, library=library).exists():
         return JsonResponse({"error": "The selected question image could not be found in the active library."}, status=400)

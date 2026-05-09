@@ -4662,13 +4662,23 @@ td,
 .a4-preview-card {
   width: 100%;
   max-width: 420px;
-  min-height: 540px;
+  min-height: 594px;
   margin: 16px auto;
   border: 1px solid #cfd8e3;
   background: #ffffff;
   color: #111827;
   box-shadow: 0 16px 42px rgba(0, 0, 0, 0.18);
   padding: 34px;
+  aspect-ratio: 210 / 297;
+  overflow: hidden;
+}
+
+.a4-preview-viewport {
+  display: grid;
+  justify-items: center;
+  overflow: auto;
+  max-height: calc(100vh - 210px);
+  padding: 0 4px;
 }
 
 .sticky-preview {
@@ -4799,13 +4809,40 @@ td,
 
 .mcq-preview-table {
   width: 100%;
+  table-layout: fixed;
   border-collapse: collapse;
   margin: 8px 0;
 }
 
+.mcq-preview-table th,
 .mcq-preview-table td {
   border: 1px solid #cfd8e3;
   padding: 7px 8px;
+  overflow-wrap: anywhere;
+  vertical-align: top;
+}
+
+.rich-preview-content {
+  font-size: 14px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.rich-preview-content p {
+  margin: 0 0 9px;
+}
+
+.rich-preview-content h1,
+.rich-preview-content h2,
+.rich-preview-content h3 {
+  margin: 0 0 10px;
+  color: #111827;
+}
+
+.rich-preview-content ul,
+.rich-preview-content ol {
+  margin: 0 0 10px 20px;
+  padding: 0;
 }
 
 .mcq-answer-table-preview {
@@ -5344,6 +5381,144 @@ td,
   inset: 0;
   opacity: 0;
   cursor: pointer;
+}
+
+.rich-editor-shell {
+  display: grid;
+  gap: 12px;
+}
+
+.rich-editor-toolbar,
+.rich-equation-palette {
+  position: sticky;
+  top: 86px;
+  z-index: 3;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  border: 1px solid var(--line, #d8e1eb);
+  border-radius: 10px;
+  background: var(--panel-bg, #ffffff);
+  padding: 10px;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.08);
+}
+
+.rich-equation-palette {
+  top: 146px;
+  z-index: 2;
+  background: var(--panel-bg-soft, #f8fafc);
+}
+
+.rich-equation-palette span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted, #6b778c);
+  font-weight: 800;
+  margin-right: 4px;
+}
+
+.rich-editor-toolbar button,
+.rich-equation-palette button,
+.rich-upload-button {
+  position: relative;
+  display: inline-grid;
+  min-width: 38px;
+  min-height: 34px;
+  place-items: center;
+  border: 1px solid var(--line, #d8e1eb);
+  border-radius: 8px;
+  background: var(--input-bg, #ffffff);
+  color: var(--text, #172033);
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.rich-editor-toolbar button:hover,
+.rich-equation-palette button:hover,
+.rich-upload-button:hover,
+.rich-editor-toolbar button.active {
+  border-color: var(--teal, #14b8a6);
+  background: color-mix(in srgb, var(--teal, #14b8a6) 18%, var(--panel-bg));
+  color: var(--text, #172033);
+}
+
+.rich-upload-button input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.a4-editor-stage {
+  display: grid;
+  justify-items: center;
+  border: 1px solid var(--line, #d8e1eb);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--panel-bg-soft, #f8fafc) 88%, #000000);
+  max-height: calc(100vh - 330px);
+  min-height: 560px;
+  overflow: auto;
+  padding: 18px;
+}
+
+.a4-editor-page {
+  width: min(100%, 794px);
+  aspect-ratio: 210 / 297;
+  background: #ffffff;
+  color: #111827;
+  border: 1px solid #cfd8e3;
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.2);
+  padding: 64px;
+  overflow: auto;
+}
+
+.a4-rich-editor-content {
+  min-height: 100%;
+  outline: none;
+  font-family: "Segoe UI", Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.45;
+}
+
+.a4-rich-editor-content p {
+  margin: 0 0 10px;
+}
+
+.a4-rich-editor-content .is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: #94a3b8;
+  pointer-events: none;
+  height: 0;
+}
+
+.a4-rich-editor-content img {
+  display: block;
+  max-width: 100%;
+  max-height: 340px;
+  object-fit: contain;
+  margin: 12px auto;
+}
+
+.a4-rich-editor-content table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  margin: 12px 0;
+}
+
+.a4-rich-editor-content th,
+.a4-rich-editor-content td {
+  border: 1px solid #111827;
+  padding: 8px;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+
+.a4-rich-editor-content th {
+  background: #f1f5f9;
 }
 
 .asset-preview-strip {
