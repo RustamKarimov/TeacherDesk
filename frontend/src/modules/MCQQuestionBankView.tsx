@@ -1,5 +1,5 @@
 import { BadgeCheck, CheckSquare2, ClipboardList, Copy, FileQuestion, Image, Pencil, Plus, Search, Sigma, Square, Table2, Tags, Trash2, X } from "lucide-react";
-import { type CSSProperties, type ReactNode, useEffect, useMemo, useState } from "react";
+import { type CSSProperties, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import type { JSONContent } from "@tiptap/react";
 import katex from "katex";
 import "katex/dist/katex.min.css";
@@ -177,27 +177,53 @@ function MultiSelectFilter({
   selectedIds: number[];
   onChange: (ids: number[]) => void;
 }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const wrapperRef = useRef<HTMLDivElement | null>(null);
   const selectedNames = options.filter((item) => selectedIds.includes(item.id)).map((item) => item.name);
   const summary = selectedNames.length ? `${selectedNames.length} selected` : label;
+  const filteredOptions = options.filter((item) => item.name.toLowerCase().includes(query.trim().toLowerCase()));
+
+  useEffect(() => {
+    function closeIfOutside(event: MouseEvent) {
+      if (wrapperRef.current && !wrapperRef.current.contains(event.target as Node)) setIsOpen(false);
+    }
+    document.addEventListener("mousedown", closeIfOutside);
+    return () => document.removeEventListener("mousedown", closeIfOutside);
+  }, []);
+
   function toggle(id: number) {
     onChange(selectedIds.includes(id) ? selectedIds.filter((item) => item !== id) : [...selectedIds, id]);
   }
+
   return (
-    <details className="multi-filter">
-      <summary>{summary}</summary>
-      <div className="multi-filter-menu">
-        <div className="multi-filter-actions">
-          <button type="button" onClick={() => onChange(options.map((item) => item.id))}>All</button>
-          <button type="button" onClick={() => onChange([])}>None</button>
+    <div className={`multi-filter ${isOpen ? "open" : ""}`} ref={wrapperRef}>
+      <button className="multi-filter-trigger" onClick={() => setIsOpen((current) => !current)} type="button">
+        <span>{label}</span>
+        <strong>{summary}</strong>
+      </button>
+      {isOpen ? (
+        <div className="multi-filter-menu">
+          <label className="multi-filter-search"><Search size={15} /><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder={`Search ${label.toLowerCase()}`} /></label>
+          <div className="multi-filter-selected">
+            {selectedNames.length ? selectedNames.slice(0, 4).map((name) => <em key={name}>{name}</em>) : <span>No {label.toLowerCase()} selected</span>}
+            {selectedNames.length > 4 ? <em>+{selectedNames.length - 4}</em> : null}
+          </div>
+          <div className="multi-filter-actions">
+            <button type="button" onClick={() => onChange(options.map((item) => item.id))}>Select all</button>
+            <button type="button" onClick={() => onChange([])}>Clear</button>
+          </div>
+          <div className="multi-filter-list">
+            {filteredOptions.length ? filteredOptions.map((item) => (
+              <label key={item.id}>
+                <input checked={selectedIds.includes(item.id)} onChange={() => toggle(item.id)} type="checkbox" />
+                <span>{item.name}</span>
+              </label>
+            )) : <div className="multi-filter-empty">No matches</div>}
+          </div>
         </div>
-        {options.map((item) => (
-          <label key={item.id}>
-            <input checked={selectedIds.includes(item.id)} onChange={() => toggle(item.id)} type="checkbox" />
-            <span>{item.name}</span>
-          </label>
-        ))}
-      </div>
-    </details>
+      ) : null}
+    </div>
   );
 }
 
@@ -418,9 +444,10 @@ export function MCQQuestionBankView({ onAddQuestion, onEditQuestion }: { onAddQu
           </div>
 
           <div className="results-head">
-            <div><strong>Results</strong><span>{count} MCQ questions / showing {tableSummary}</span></div>
+            <div><strong>Question Library</strong><span>{count} questions found / showing {tableSummary}</span></div>
             <div className="bulk-action-bar">
-              <span>{selectedQuestionIds.length} selected / {examBasketIds.length} in exam basket</span>
+              <span><CheckSquare2 size={15} />{selectedQuestionIds.length} selected</span>
+              <span><ClipboardList size={15} />{examBasketIds.length} in basket</span>
               <button className="secondary-action compact-action" disabled={!selectedQuestionIds.length && !selected} onClick={addSelectedToExam}><ClipboardList size={15} />Add to exam</button>
               <button className="secondary-action compact-action danger-border" disabled={!selectedQuestionIds.length} onClick={deleteSelectedQuestions}><Trash2 size={15} />Delete selected</button>
               <button className="secondary-action compact-action" disabled={!selected} onClick={() => selected && onEditQuestion(selected.id)}><Pencil size={15} />Edit current</button>
@@ -430,7 +457,7 @@ export function MCQQuestionBankView({ onAddQuestion, onEditQuestion }: { onAddQu
           <div className="mcq-table">
             <div className="mcq-table-head">
               <button className="table-check" onClick={togglePageSelection} type="button" title="Select all visible questions">{rows.length > 0 && rows.every((row) => selectedQuestionIds.includes(row.id)) ? <CheckSquare2 size={17} /> : <Square size={17} />}</button>
-              <span>Question</span><span>Topics</span><span>Details</span>
+              <span>Question</span><span>Topics</span><span>Status & Actions</span>
             </div>
             {rows.length ? rows.map((row) => (
               <div className={`mcq-table-row ${selected?.id === row.id ? "active" : ""}`} key={row.id} onClick={() => setSelectedId(row.id)} role="button" tabIndex={0}>
@@ -441,10 +468,12 @@ export function MCQQuestionBankView({ onAddQuestion, onEditQuestion }: { onAddQu
                   {row.topics.length > 2 ? <em>+{row.topics.length - 2}</em> : null}
                 </span>
                 <span className="mcq-row-details">
-                  <span className={`mini-status ${row.review_status === "needs_review" ? "warn" : row.review_status === "verified" || row.review_status === "ready" ? "ok" : ""}`}>{row.review_status_label}</span>
-                  <span className="mcq-marks-pill">{row.marks} mark{row.marks === 1 ? "" : "s"}</span>
-                  <span className="content-icons" title={[row.has_images ? "image" : "", row.has_tables ? "table" : "", row.has_equations ? "equation" : ""].filter(Boolean).join(", ") || "text"}>
-                    {row.has_images ? <Image size={15} /> : null}{row.has_tables ? <Table2 size={15} /> : null}{row.has_equations ? <Sigma size={15} /> : null}{!row.has_images && !row.has_tables && !row.has_equations ? <Tags size={15} /> : null}
+                  <span className="mcq-row-meta">
+                    <span className={`mini-status ${row.review_status === "needs_review" ? "warn" : row.review_status === "verified" || row.review_status === "ready" ? "ok" : ""}`}>{row.review_status_label}</span>
+                    <span className="mcq-marks-pill">{row.marks} mark{row.marks === 1 ? "" : "s"}</span>
+                    <span className="content-icons" title={[row.has_images ? "image" : "", row.has_tables ? "table" : "", row.has_equations ? "equation" : ""].filter(Boolean).join(", ") || "text"}>
+                      {row.has_images ? <Image size={15} /> : null}{row.has_tables ? <Table2 size={15} /> : null}{row.has_equations ? <Sigma size={15} /> : null}{!row.has_images && !row.has_tables && !row.has_equations ? <Tags size={15} /> : null}
+                    </span>
                   </span>
                   <span className="row-actions">
                     <button className="icon-button" onClick={(event) => { event.stopPropagation(); onEditQuestion(row.id); }} title="Edit full question"><Pencil size={15} /></button>
@@ -466,10 +495,12 @@ export function MCQQuestionBankView({ onAddQuestion, onEditQuestion }: { onAddQu
 
         <aside className="panel mcq-preview-panel sticky-preview">
           <div className="dashboard-widget-head">
-            <div><strong>A4 Preview</strong><span>{isTeacherView ? "Teacher preview: correct answer is highlighted" : "Student preview: answers are hidden"}</span></div>
+            <div><strong>A4 Preview</strong><span>{isTeacherView ? "Teacher mode shows the correct answer." : "Student mode hides the correct answer."}</span></div>
             <div className="preview-actions">
-              <button className={`ghost-button ${!isTeacherView ? "active-preview-mode" : ""}`} onClick={() => setIsTeacherView(false)}>Student</button>
-              <button className={`ghost-button ${isTeacherView ? "active-preview-mode" : ""}`} onClick={() => setIsTeacherView(true)}>Teacher</button>
+              <div className="preview-mode-toggle" role="group" aria-label="Preview mode">
+                <button className={!isTeacherView ? "active" : ""} onClick={() => setIsTeacherView(false)} type="button">Student</button>
+                <button className={isTeacherView ? "active" : ""} onClick={() => setIsTeacherView(true)} type="button">Teacher</button>
+              </div>
               <button className="secondary-action compact-action" disabled={!selected} onClick={() => selected && onEditQuestion(selected.id)}><Pencil size={15} />Edit</button>
             </div>
           </div>
