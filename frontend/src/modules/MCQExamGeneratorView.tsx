@@ -1,4 +1,4 @@
-import { ClipboardList, Dice5, FileText, FolderOpen, KeyRound, Plus, RefreshCw, Shuffle, Trash2 } from "lucide-react";
+import { ClipboardList, Dice5, FileText, FolderOpen, KeyRound, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { API_BASE, readJson } from "../api";
@@ -218,7 +218,6 @@ export function MCQExamGeneratorView({
           <h1>MCQ Exam Generator</h1>
           <span className="header-subtitle">Generate variants, answer keys, teacher versions, and metadata-aware MCQ exams.</span>
         </div>
-        <button className="primary-action" onClick={generatePreview}><Shuffle size={17} />Generate preview</button>
       </section>
 
       <section className="mcq-generator-grid">
@@ -263,7 +262,7 @@ export function MCQExamGeneratorView({
                       <span className="order-badge">{index + 1}</span>
                       <MultiPicker label="Topics" options={metadata?.topics ?? []} selectedIds={row.topicIds} onChange={(ids) => updateTopicRow(row.id, { topicIds: ids })} />
                       <MultiPicker label="Tags" options={metadata?.tags ?? []} selectedIds={row.tagIds} onChange={(ids) => updateTopicRow(row.id, { tagIds: ids })} />
-                      <label className="mini-count-field"><span>Need</span><input min={1} max={available || 1} type="number" value={row.count} onChange={(event) => updateTopicRow(row.id, { count: Number(event.target.value) || 1 })} /></label>
+                      <label className="count-filter-field"><span>Needed</span><input min={1} max={available || 1} type="number" value={row.count} onChange={(event) => updateTopicRow(row.id, { count: Number(event.target.value) || 1 })} /></label>
                       <span className="available-pill">{available} available</span>
                       <button className="toolbar-icon-button danger-icon" disabled={topicRows.length === 1} onClick={() => setTopicRows((current) => current.filter((item) => item.id !== row.id))} title="Remove row"><Trash2 size={16} /></button>
                     </div>
@@ -283,7 +282,7 @@ export function MCQExamGeneratorView({
           <div className="mcq-generator-card">
             <div className="dashboard-widget-head">
               <div><strong>Selected questions ({selectedQuestions.length})</strong><span>{totalMarks} marks. Questions appear in the current preview order.</span></div>
-              <button className="secondary-action compact-action" onClick={generatePreview}><RefreshCw size={15} />Refresh</button>
+              <button className="secondary-action compact-action" onClick={generatePreview}><RefreshCw size={15} />{selectedQuestions.length ? "Refresh" : "Generate preview"}</button>
             </div>
             <div className="generator-question-list">
               {selectedQuestions.length ? selectedQuestions.map((row, index) => (

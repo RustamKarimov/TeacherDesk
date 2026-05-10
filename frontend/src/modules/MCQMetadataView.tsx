@@ -1,4 +1,4 @@
-import { Plus, Save, Tags, Trash2 } from "lucide-react";
+import { Layers3, Plus, RefreshCw, Save, Tags, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { API_BASE, readJson } from "../api";
@@ -11,6 +11,7 @@ export function MCQMetadataView() {
   const [subtopicName, setSubtopicName] = useState("");
   const [tagName, setTagName] = useState("");
   const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const selectedTopic = metadata?.topics.find((topic) => topic.id === selectedTopicId) ?? metadata?.topics[0] ?? null;
 
   useEffect(() => {
@@ -32,9 +33,14 @@ export function MCQMetadataView() {
   }, [selectedTopic?.id]);
 
   async function loadMetadata() {
-    const response = await fetch(`${API_BASE}/api/mcq/metadata/`);
-    const payload = await readJson<MCQMetadataPayload>(response);
-    setMetadata(payload);
+    setError(null);
+    try {
+      const response = await fetch(`${API_BASE}/api/mcq/metadata/`);
+      const payload = await readJson<MCQMetadataPayload>(response);
+      setMetadata(payload);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not load MCQ metadata.");
+    }
   }
 
   async function saveTopic() {
@@ -96,20 +102,33 @@ export function MCQMetadataView() {
         <div>
           <p className="eyebrow">MCQ Builder</p>
           <h1>MCQ Metadata</h1>
-          <span className="header-subtitle">Manage topics, subtopics, tags, difficulty labels, and portable MCQ bank packaging.</span>
+          <span className="header-subtitle">Manage the reusable topics, subtopics, and tags used by the MCQ bank and generator.</span>
         </div>
+        <button className="secondary-action" onClick={loadMetadata}><RefreshCw size={16} />Refresh</button>
       </section>
-      <section className="dashboard-command">
+
+      <section className="metadata-shell">
+        {error ? <div className="callout error">{error}</div> : null}
+        {message ? <div className="callout success">{message}</div> : null}
+
+        <div className="metadata-summary-row">
+          <article><Layers3 size={18} /><span>Topics</span><strong>{metadata?.topics.length ?? 0}</strong></article>
+          <article><Tags size={18} /><span>Tags</span><strong>{metadata?.tags.length ?? 0}</strong></article>
+          <article><Layers3 size={18} /><span>Subtopics</span><strong>{metadata?.topics.reduce((sum, topic) => sum + topic.subtopics.length, 0) ?? 0}</strong></article>
+        </div>
+
+        <div className="metadata-grid">
         <div className="dashboard-widget metadata-manager">
           <div className="dashboard-widget-head">
             <div><strong>Topics</strong><span>Reusable metadata for MCQ generation and future analytics.</span></div>
             <button className="secondary-action" onClick={createTopic}><Plus size={16} />New topic</button>
           </div>
-          {message ? <div className="callout success">{message}</div> : null}
-          <div className="folder-table">
+          <div className="metadata-list">
             {metadata?.topics.length ? metadata.topics.map((topic) => (
-              <button className={`folder-table-row metadata-row ${selectedTopic?.id === topic.id ? "active" : ""}`} key={topic.id} onClick={() => setSelectedTopicId(topic.id)}>
-                <strong>{topic.name}</strong><span>{topic.subtopics.length} subtopics</span><small className="ok">{topic.question_count} questions</small>
+              <button className={`metadata-topic-row ${selectedTopic?.id === topic.id ? "active" : ""}`} key={topic.id} onClick={() => setSelectedTopicId(topic.id)}>
+                <span className="topic-color-dot" style={{ background: topic.color || "#14b8a6" }} />
+                <span><strong>{topic.name}</strong><small>{topic.subtopics.length} subtopics</small></span>
+                <em>{topic.question_count} questions</em>
               </button>
             )) : <div className="empty-state"><Tags size={30} /><strong>No MCQ topics yet</strong><span>Topics can be created here when the full metadata editor is implemented.</span></div>}
           </div>
@@ -145,6 +164,7 @@ export function MCQMetadataView() {
             <input value={tagName} onChange={(event) => setTagName(event.target.value)} placeholder="New tag" />
             <button className="secondary-action" onClick={addTag}>Add tag</button>
           </div>
+        </div>
         </div>
       </section>
     </>
