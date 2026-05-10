@@ -4438,6 +4438,48 @@ td,
   line-height: 1.1;
 }
 
+.mcq-workflow-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.mcq-workflow-row button {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 74px;
+  border: 1px solid var(--line, #d8e1eb);
+  border-radius: 8px;
+  background: var(--panel-bg, #ffffff);
+  color: var(--text, #172033);
+  cursor: pointer;
+  padding: 12px;
+  text-align: left;
+  transition: border-color 140ms ease, background 140ms ease, transform 140ms ease;
+}
+
+.mcq-workflow-row button:hover {
+  border-color: var(--teal, #14b8a6);
+  background: color-mix(in srgb, var(--teal, #14b8a6) 10%, var(--panel-bg));
+  transform: translateY(-1px);
+}
+
+.mcq-workflow-row svg {
+  color: var(--teal, #14b8a6);
+  flex: 0 0 auto;
+}
+
+.mcq-workflow-row strong,
+.mcq-workflow-row small {
+  display: block;
+}
+
+.mcq-workflow-row small {
+  color: var(--muted, #6b778c);
+  margin-top: 2px;
+}
+
 .mcq-dashboard-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.65fr);
@@ -4496,6 +4538,13 @@ td,
 
 .coverage-grid strong {
   color: var(--text, #172033);
+}
+
+.mcq-empty-action {
+  display: grid;
+  justify-items: start;
+  gap: 8px;
+  padding: 18px;
 }
 
 .workbench.mcq-bank-workbench,
@@ -7272,6 +7321,7 @@ td,
 
 @media (max-width: 1180px) {
   .stat-grid.four,
+  .mcq-workflow-row,
   .mcq-dashboard-grid,
   .workbench.mcq-bank-workbench,
   .mcq-editor-grid {

@@ -1,4 +1,4 @@
-import { Archive, BadgeCheck, BookOpenCheck, Database, FileQuestion, Image, Plus, Table2, Tags, TriangleAlert } from "lucide-react";
+import { Archive, BadgeCheck, BookOpenCheck, Database, FileQuestion, Image, ListChecks, Plus, Settings2, Shuffle, Table2, Tags, TriangleAlert } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { API_BASE, readJson } from "../api";
@@ -22,8 +22,8 @@ export function MCQDashboardView({ onOpenModule }: { onOpenModule: (module: MCQM
       <section className="content-header dashboard-header">
         <div>
           <p className="eyebrow">MCQ Builder</p>
-          <h1>MCQ Builder</h1>
-          <span className="header-subtitle">Create structured multiple-choice questions and generate printable exams.</span>
+          <h1>Multiple-choice workspace</h1>
+          <span className="header-subtitle">Create MCQ questions, organise metadata, and generate printable exam variants.</span>
         </div>
         <div className="header-actions">
           <button className="secondary-action" onClick={() => onOpenModule("MCQ Question Bank")}><BookOpenCheck size={17} />Open MCQ bank</button>
@@ -43,6 +43,25 @@ export function MCQDashboardView({ onOpenModule }: { onOpenModule: (module: MCQM
               <MCQStatCard icon={Archive} label="Generated Papers" value={dashboard.summary.generated_papers} note="PDF-ready exams" />
             </div>
 
+            <div className="mcq-workflow-row">
+              <button onClick={() => onOpenModule("Add MCQ Question")} type="button">
+                <Plus size={18} />
+                <span><strong>Add question</strong><small>Write, preview, and save one MCQ</small></span>
+              </button>
+              <button onClick={() => onOpenModule("MCQ Question Bank")} type="button">
+                <BookOpenCheck size={18} />
+                <span><strong>Question bank</strong><small>Search, edit, select, and delete</small></span>
+              </button>
+              <button onClick={() => onOpenModule("MCQ Exam Generator")} type="button">
+                <Shuffle size={18} />
+                <span><strong>Generate exam</strong><small>Build variants and answer keys</small></span>
+              </button>
+              <button onClick={() => onOpenModule("MCQ Metadata")} type="button">
+                <Settings2 size={18} />
+                <span><strong>Metadata</strong><small>Topics, subtopics, and tags</small></span>
+              </button>
+            </div>
+
             <div className="mcq-dashboard-grid">
               <section className="dashboard-widget">
                 <div className="dashboard-widget-head">
@@ -54,9 +73,16 @@ export function MCQDashboardView({ onOpenModule }: { onOpenModule: (module: MCQM
                     <button className="mcq-list-row" key={question.id} onClick={() => onOpenModule("MCQ Question Bank")}>
                       <strong>{question.title || `MCQ #${question.id}`}</strong>
                       <span>{question.topics.map((topic) => topic.name).join(", ") || "No topic yet"}</span>
-                      <small>{question.marks} mark · {question.option_count || 0} options · {question.review_status_label}</small>
+                      <small>{question.marks} mark / {question.option_count || 0} options / {question.review_status_label}</small>
                     </button>
-                  )) : <div className="dashboard-empty">No MCQ questions yet. Add your first structured question.</div>}
+                  )) : (
+                    <div className="dashboard-empty mcq-empty-action">
+                      <ListChecks size={28} />
+                      <strong>No MCQ questions yet</strong>
+                      <span>Add your first structured question when you are ready.</span>
+                      <button className="secondary-action compact-action" onClick={() => onOpenModule("Add MCQ Question")}>Add question</button>
+                    </div>
+                  )}
                 </div>
               </section>
 
