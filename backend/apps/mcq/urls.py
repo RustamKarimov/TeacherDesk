@@ -1,18 +1,23 @@
 import json
 import mimetypes
+import random
+import re
 from pathlib import Path
 from uuid import uuid4
 
-from django.utils import timezone
 from django.db.models import Count, Q
 from django.http import FileResponse, JsonResponse
 from django.urls import path
+from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
+from pypdf import PdfWriter
+from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
 
-from apps.libraries.urls import active_library
+from apps.libraries.urls import active_library, get_settings
 
 from .models import (
     MCQExam,
+    MCQExamQuestion,
     MCQImageAsset,
     MCQOption,
     MCQOptionBlock,
@@ -25,6 +30,10 @@ from .models import (
 
 
 ALLOWED_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
+PAGE_WIDTH = 595
+PAGE_HEIGHT = 842
+PAGE_MARGIN = 54
+LINE_HEIGHT = 14
 
 
 def _normalize_source_question_number(value: object) -> str:
@@ -872,6 +881,297 @@ def delete_question(request, question_id: int):
     return JsonResponse({"ok": True})
 
 
+def _safe_filename(value: str) -> str:
+    cleaned = re.sub(r"[^A-Za-z0-9._-]+", "_", value.strip())
+    return cleaned.strip("_") or "mcq_exam"
+
+
+def _exam_output_folder(title: str) -> Path:
+    settings = get_settings()
+    root = Path(settings.default_generated_exams_root or settings.library.generated_exams_path or settings.library.root_path).expanduser().resolve()
+    base = root / _safe_filename(title)
+    folder = base
+    counter = 2
+    while folder.exists():
+        folder = root / f"{base.name}_{counter}"
+        counter += 1
+    folder.mkdir(parents=True, exist_ok=True)
+    return folder
+
+
+def _pdf_escape(text: object) -> str:
+    return str(text or "").replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+
+
+def _wrap_text(text: str, max_chars: int = 92) -> list[str]:
+    lines: list[str] = []
+    for raw_line in str(text or "").splitlines() or [""]:
+        words = raw_line.split()
+        if not words:
+            lines.append("")
+            continue
+        line = ""
+        for word in words:
+            candidate = f"{line} {word}".strip()
+            if len(candidate) > max_chars and line:
+                lines.append(line)
+                line = word
+            else:
+                line = candidate
+        if line:
+            lines.append(line)
+    return lines
+
+
+def _question_text(question: MCQQuestion) -> list[str]:
+    if question.content_text.strip():
+        lines = _wrap_text(question.content_text)
+    else:
+        lines = []
+        for block in question.blocks.all():
+            if block.text:
+                lines.extend(_wrap_text(block.text))
+            if block.asset_id:
+                lines.append(f"[image: {block.asset.original_name if block.asset else 'question image'}]")
+            if block.table_data:
+                for row in block.table_data.get("rows", []):
+                    if isinstance(row, list):
+                        lines.append(" | ".join(str(cell) for cell in row))
+    return lines or ["[No question text saved]"]
+
+
+def _option_text(option: MCQOption) -> str:
+    if option.layout_settings.get("table_cells"):
+        return " | ".join(str(cell) for cell in option.layout_settings.get("table_cells", []))
+    if option.content_text:
+        return option.content_text
+    fragments = []
+    for block in option.blocks.all():
+        if block.text:
+            fragments.append(block.text)
+        if block.asset_id:
+            fragments.append(f"[image: {block.asset.original_name if block.asset else 'option image'}]")
+    return " ".join(fragments).strip() or "Answer option"
+
+
+def _question_render_lines(question: MCQQuestion, options: list[tuple[str, MCQOption]], question_number: int, include_metadata: bool, metadata_position: str, teacher: bool = False) -> list[str]:
+    metadata = f"{question.exam_code or 'manual'} {question.source_question_number or f'Q{question_number}'}"
+    lines: list[str] = []
+    if include_metadata and metadata_position == "above":
+        lines.append(metadata)
+    lines.extend([f"{question_number}. {line}" if index == 0 else f"   {line}" for index, line in enumerate(_question_text(question))])
+    if include_metadata and metadata_position == "below":
+        lines.append(f"   Source: {metadata}")
+    lines.append("")
+    for display_label, option in options:
+        marker = " *" if teacher and option.is_correct else ""
+        option_lines = _wrap_text(_option_text(option), 82)
+        for index, line in enumerate(option_lines):
+            prefix = f"   {display_label}.{marker} " if index == 0 else "      "
+            lines.append(f"{prefix}{line}")
+    return lines
+
+
+def _make_pdf(path: Path, title: str, question_groups: list[tuple[MCQQuestion, list[tuple[str, MCQOption]]]], include_metadata: bool, metadata_position: str, teacher: bool = False):
+    writer = PdfWriter()
+    page_lines: list[str] = []
+    pages: list[list[str]] = []
+    available_lines = int((PAGE_HEIGHT - PAGE_MARGIN * 2) / LINE_HEIGHT)
+    page_lines.extend([title, ""])
+    for index, (question, options) in enumerate(question_groups, start=1):
+        question_lines = _question_render_lines(question, options, index, include_metadata, metadata_position, teacher)
+        needed = len(question_lines) + 2
+        if len(page_lines) + needed > available_lines and page_lines:
+            pages.append(page_lines)
+            page_lines = []
+        page_lines.extend(question_lines)
+        page_lines.append("")
+    if page_lines:
+        pages.append(page_lines)
+    for lines in pages or [[title]]:
+        page = writer.add_blank_page(width=PAGE_WIDTH, height=PAGE_HEIGHT)
+        commands = ["BT", "/F1 11 Tf", "1 0 0 1 54 788 Tm", "14 TL"]
+        for line in lines:
+            commands.append(f"({_pdf_escape(line)}) Tj")
+            commands.append("T*")
+        commands.append("ET")
+        stream = DecodedStreamObject()
+        stream.set_data(("\n".join(commands) + "\n").encode("latin-1", errors="replace"))
+        page[NameObject("/Contents")] = writer._add_object(stream)
+        page[NameObject("/Resources")] = DictionaryObject({
+            NameObject("/Font"): DictionaryObject({
+                NameObject("/F1"): writer._add_object(
+                    DictionaryObject({
+                        NameObject("/Type"): NameObject("/Font"),
+                        NameObject("/Subtype"): NameObject("/Type1"),
+                        NameObject("/BaseFont"): NameObject("/Helvetica"),
+                    })
+                )
+            })
+        })
+    with path.open("wb") as output:
+        writer.write(output)
+
+
+def _make_answer_key_pdf(path: Path, title: str, question_groups: list[tuple[MCQQuestion, list[tuple[str, MCQOption]]]]):
+    writer = PdfWriter()
+    page = writer.add_blank_page(width=PAGE_WIDTH, height=PAGE_HEIGHT)
+    lines = [f"{title} - Answer key", ""]
+    for index, (question, options) in enumerate(question_groups, start=1):
+        correct = next((display_label for display_label, option in options if option.is_correct), "-")
+        topics = ", ".join(topic.name for topic in question.topics.all()) or "-"
+        lines.append(f"{index}. {correct}   {question.exam_code or '-'} {question.source_question_number or '-'}   {topics}")
+    commands = ["BT", "/F1 10 Tf", "1 0 0 1 54 788 Tm", "13 TL"]
+    for line in lines[:56]:
+        commands.append(f"({_pdf_escape(line)}) Tj")
+        commands.append("T*")
+    commands.append("ET")
+    stream = DecodedStreamObject()
+    stream.set_data(("\n".join(commands) + "\n").encode("latin-1", errors="replace"))
+    page[NameObject("/Contents")] = writer._add_object(stream)
+    page[NameObject("/Resources")] = DictionaryObject({
+        NameObject("/Font"): DictionaryObject({
+            NameObject("/F1"): writer._add_object(DictionaryObject({NameObject("/Type"): NameObject("/Font"), NameObject("/Subtype"): NameObject("/Type1"), NameObject("/BaseFont"): NameObject("/Helvetica")}))
+        })
+    })
+    with path.open("wb") as output:
+        writer.write(output)
+
+
+def _eligible_mcq_questions(review_pool: str):
+    queryset = MCQQuestion.objects.filter(library=active_library()).prefetch_related("topics", "tags", "blocks", "blocks__asset", "options", "options__blocks", "options__blocks__asset")
+    if review_pool != "all":
+        queryset = queryset.filter(review_status__in=[MCQQuestion.ReviewStatus.READY, MCQQuestion.ReviewStatus.VERIFIED])
+    return list(queryset)
+
+
+def _pick_full_mcq(questions: list[MCQQuestion], count: int) -> list[MCQQuestion]:
+    grouped: dict[str, list[MCQQuestion]] = {}
+    for question in questions:
+        key = question.source_question_number or str(question.id)
+        grouped.setdefault(key, []).append(question)
+    ordered_keys = sorted(grouped, key=lambda value: int(re.search(r"\d+", value).group()) if re.search(r"\d+", value) else 9999)
+    return [random.choice(grouped[key]) for key in ordered_keys[:count]]
+
+
+def _pick_topic_rows(questions: list[MCQQuestion], rows: list[dict[str, object]]) -> tuple[list[MCQQuestion], list[dict[str, object]]]:
+    selected: list[MCQQuestion] = []
+    warnings: list[dict[str, object]] = []
+    used: set[int] = set()
+    for index, row in enumerate(rows, start=1):
+        topic_ids = {int(value) for value in row.get("topic_ids", []) if str(value).isdigit()}
+        tag_ids = {int(value) for value in row.get("tag_ids", []) if str(value).isdigit()}
+        try:
+            count = max(int(row.get("count") or 1), 1)
+        except (TypeError, ValueError):
+            count = 1
+        matches = [
+            question for question in questions
+            if question.id not in used
+            and topic_ids.issubset({topic.id for topic in question.topics.all()})
+            and tag_ids.issubset({tag.id for tag in question.tags.all()})
+        ]
+        random.shuffle(matches)
+        picked = matches[:count]
+        selected.extend(picked)
+        used.update(question.id for question in picked)
+        if len(picked) < count:
+            warnings.append({"row": index, "requested": count, "available": len(matches), "message": "Not enough matching questions."})
+    return selected, warnings
+
+
+@csrf_exempt
+def generate_exam(request):
+    if request.method != "POST":
+        return JsonResponse({"error": "POST is required."}, status=405)
+    try:
+        payload = json.loads(request.body or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Request body must be valid JSON."}, status=400)
+
+    title = str(payload.get("title") or "MCQ exam").strip() or "MCQ exam"
+    mode = str(payload.get("mode") or MCQExam.Mode.FULL_PAPER)
+    review_pool = str(payload.get("review_pool") or "ready")
+    include_metadata = bool(payload.get("include_metadata"))
+    metadata_position = "below" if payload.get("metadata_position") == "below" else "above"
+    shuffle_questions = bool(payload.get("shuffle_questions"))
+    shuffle_options = bool(payload.get("shuffle_options"))
+    variants = min(max(int(payload.get("variants") or 1), 1), 10)
+    question_count = min(max(int(payload.get("question_count") or 40), 1), 100)
+
+    questions = _eligible_mcq_questions(review_pool)
+    warnings: list[dict[str, object]] = []
+    if mode == MCQExam.Mode.MANUAL:
+        raw_ids = [int(value) for value in payload.get("selected_question_ids", []) if str(value).isdigit()]
+        selected = [question for question in questions if question.id in raw_ids]
+        selected.sort(key=lambda question: raw_ids.index(question.id))
+    elif mode == MCQExam.Mode.TOPIC:
+        selected, warnings = _pick_topic_rows(questions, payload.get("topic_rows") if isinstance(payload.get("topic_rows"), list) else [])
+    else:
+        mode = MCQExam.Mode.FULL_PAPER
+        selected = _pick_full_mcq(questions, question_count)
+    if not selected:
+        return JsonResponse({"error": "No questions matched these generator settings."}, status=400)
+
+    try:
+        output_folder = _exam_output_folder(title)
+    except PermissionError as error:
+        return JsonResponse({"error": f"TeacherDesk cannot write to the generated exams folder: {error}"}, status=400)
+    exam = MCQExam.objects.create(
+        library=active_library(),
+        title=title,
+        mode=mode,
+        total_marks=sum(question.marks for question in selected),
+        settings_snapshot=payload,
+    )
+    for index, question in enumerate(selected, start=1):
+        MCQExamQuestion.objects.create(exam=exam, question=question, order=index, marks=question.marks)
+
+    variant_payloads = []
+    for variant_index in range(1, variants + 1):
+        variant_questions = list(selected)
+        if shuffle_questions:
+            random.shuffle(variant_questions)
+        question_groups = []
+        answer_order = []
+        for question in variant_questions:
+            options = list(question.options.all())
+            if shuffle_options:
+                random.shuffle(options)
+            display_options = [(chr(65 + option_index), option) for option_index, option in enumerate(options)]
+            question_groups.append((question, display_options))
+            answer_order.append({
+                "question_id": question.id,
+                "option_order": [{"display_label": display_label, "option_uuid": str(option.uuid), "original_label": option.label} for display_label, option in display_options],
+                "correct": next((display_label for display_label, option in display_options if option.is_correct), ""),
+            })
+        suffix = f"_V{variant_index}" if variants > 1 else ""
+        student_path = output_folder / f"{_safe_filename(title)}{suffix}_Student.pdf"
+        teacher_path = output_folder / f"{_safe_filename(title)}{suffix}_Teacher.pdf"
+        key_path = output_folder / f"{_safe_filename(title)}{suffix}_Answer_Key.pdf"
+        _make_pdf(student_path, f"{title}{suffix}", question_groups, include_metadata, metadata_position, teacher=False)
+        _make_pdf(teacher_path, f"{title}{suffix} - Teacher", question_groups, include_metadata, metadata_position, teacher=True)
+        _make_answer_key_pdf(key_path, f"{title}{suffix}", question_groups)
+        variant_payloads.append({"variant": variant_index, "student_pdf": str(student_path), "teacher_pdf": str(teacher_path), "answer_key_pdf": str(key_path), "answer_order": answer_order})
+    first = variant_payloads[0]
+    exam.student_pdf_path = first["student_pdf"]
+    exam.teacher_pdf_path = first["teacher_pdf"]
+    exam.answer_key_pdf_path = first["answer_key_pdf"]
+    exam.save(update_fields=["student_pdf_path", "teacher_pdf_path", "answer_key_pdf_path", "updated_at"])
+    return JsonResponse(
+        {
+            "id": exam.id,
+            "title": exam.title,
+            "output_folder": str(output_folder),
+            "question_count": len(selected),
+            "total_marks": exam.total_marks,
+            "variants": variant_payloads,
+            "warnings": warnings,
+        },
+        status=201,
+    )
+
+
 urlpatterns = [
     path("", index),
     path("dashboard/", dashboard),
@@ -881,6 +1181,7 @@ urlpatterns = [
     path("questions/<int:question_id>/update/", update_question),
     path("questions/<int:question_id>/duplicate/", duplicate_question),
     path("questions/<int:question_id>/delete/", delete_question),
+    path("exams/generate/", generate_exam),
     path("assets/", assets),
     path("assets/upload/", upload_asset),
     path("assets/<int:asset_id>/file/", asset_file),

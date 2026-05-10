@@ -184,7 +184,13 @@ export function App() {
             }}
           />
         ) : null}
-        {activeModule === "MCQ Exam Generator" ? <MCQExamGeneratorView manualQuestionIds={manualMcqExamQuestionIds} onManualQuestionsConsumed={() => setManualMcqExamQuestionIds([])} /> : null}
+        {activeModule === "MCQ Exam Generator" ? (
+          <MCQExamGeneratorView
+            manualQuestionIds={manualMcqExamQuestionIds}
+            onManualQuestionsConsumed={() => setManualMcqExamQuestionIds([])}
+            onOpenQuestionBank={() => setActiveModule("MCQ Question Bank")}
+          />
+        ) : null}
         {activeModule === "MCQ Metadata" ? <MCQMetadataView /> : null}
         {activeModule === "Settings" ? <SettingsView /> : null}
       </main>
