@@ -673,6 +673,7 @@ def _apply_question_payload(question: MCQQuestion, payload: dict[str, object], v
     option_table = payload.get("option_table") if isinstance(payload.get("option_table"), dict) else {}
     option_table_headers = option_table.get("headers") if isinstance(option_table.get("headers"), list) else []
     option_table_rows = option_table.get("rows") if isinstance(option_table.get("rows"), dict) else {}
+    option_table_cell_asset_ids = option_table.get("cell_asset_ids") if isinstance(option_table.get("cell_asset_ids"), dict) else {}
     for index, label in enumerate(option_labels):
         normalized_label = str(label or "").strip().upper()[:8]
         if not normalized_label:
@@ -680,9 +681,11 @@ def _apply_question_payload(question: MCQQuestion, payload: dict[str, object], v
         table_cells = option_table_rows.get(normalized_label)
         layout_settings = {}
         if isinstance(table_cells, list):
+            table_cell_assets = option_table_cell_asset_ids.get(normalized_label)
             layout_settings = {
                 "table_headers": [str(header) for header in option_table_headers],
                 "table_cells": [str(cell) for cell in table_cells],
+                "table_cell_asset_ids": table_cell_assets if isinstance(table_cell_assets, list) else [],
             }
         option_text = str((payload.get("option_texts") or {}).get(normalized_label, "")).strip()
         if isinstance(table_cells, list) and not option_text:

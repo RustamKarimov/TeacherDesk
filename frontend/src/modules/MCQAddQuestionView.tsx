@@ -20,10 +20,23 @@ import type { MCQAsset, MCQAssetListPayload, MCQMetadataPayload, MCQReviewStatus
 type EditorStep = "question" | "options" | "metadata";
 type ContentBlockType = "text" | "image" | "equation" | "table" | "note";
 type ContentBlockDraft = { id: string; block_type: ContentBlockType; text: string; assetId: number | null; tableText: string };
-type OptionDraft = { label: string; text: string; equation: string; assetId: number | null; imageWidth: number; imageFit: "contain" | "cover" };
+type OptionDraft = {
+  label: string;
+  text: string;
+  equation: string;
+  assetId: number | null;
+  imageWidth: number;
+  imageHeight: number;
+  imageFit: "contain" | "cover";
+  imageAlign: "left" | "center" | "right";
+  imageOffsetX: number;
+  imageOffsetY: number;
+};
 type ImageAlign = "left" | "center" | "right";
 type OptionImagePlacement = "top" | "middle" | "bottom";
 type OptionImageSizing = "individual" | "same_height" | "same_width" | "same_size";
+type OptionLabelPlacement = "inline" | "above";
+type OptionContentAlign = "left" | "center" | "right";
 type LastMetadataDefaults = {
   subject: string;
   syllabus: string;
@@ -66,6 +79,10 @@ type MCQQuestionDetailPayload = {
     option_image_layout?: {
       placement?: OptionImagePlacement;
       sizing?: OptionImageSizing;
+      label_placement?: OptionLabelPlacement;
+      content_align?: OptionContentAlign;
+      table_borders?: boolean;
+      table_headers?: boolean;
     };
   };
   blocks: Array<{ block_type: string; text: string; asset_id: number | null; asset: MCQAsset | null; table_data?: { rows?: string[][] }; order: number }>;
@@ -73,8 +90,8 @@ type MCQQuestionDetailPayload = {
     label: string;
     is_correct: boolean;
     order: number;
-    layout_settings: { table_headers?: string[]; table_cells?: string[] };
-    blocks: Array<{ block_type: string; text: string; asset_id: number | null; asset: MCQAsset | null; order: number; settings?: { width?: number; fit?: "contain" | "cover" } }>;
+    layout_settings: { table_headers?: string[]; table_cells?: string[]; table_cell_asset_ids?: Array<number | null> };
+    blocks: Array<{ block_type: string; text: string; asset_id: number | null; asset: MCQAsset | null; order: number; settings?: { width?: number; height?: number; fit?: "contain" | "cover"; align?: "left" | "center" | "right"; offset_x?: number; offset_y?: number } }>;
   }>;
 };
 
@@ -108,12 +125,20 @@ const defaultRichContent: JSONContent = {
   ],
 };
 
-const defaultOptions: OptionDraft[] = [
-  { label: "A", text: "", equation: "", assetId: null, imageWidth: 100, imageFit: "contain" },
-  { label: "B", text: "", equation: "", assetId: null, imageWidth: 100, imageFit: "contain" },
-  { label: "C", text: "", equation: "", assetId: null, imageWidth: 100, imageFit: "contain" },
-  { label: "D", text: "", equation: "", assetId: null, imageWidth: 100, imageFit: "contain" },
-];
+const createDefaultOption = (label: string): OptionDraft => ({
+  label,
+  text: "",
+  equation: "",
+  assetId: null,
+  imageWidth: 100,
+  imageHeight: 0,
+  imageFit: "contain",
+  imageAlign: "center",
+  imageOffsetX: 0,
+  imageOffsetY: 0,
+});
+
+const defaultOptions: OptionDraft[] = ["A", "B", "C", "D"].map(createDefaultOption);
 
 const defaultTableHeaders = ["Column 1", "Column 2", "Column 3", "Column 4"];
 const defaultTableRows: Record<string, string[]> = {
@@ -216,10 +241,15 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
   const [options, setOptions] = useState<OptionDraft[]>(defaultOptions);
   const [tableHeaders, setTableHeaders] = useState<string[]>(defaultTableHeaders);
   const [tableRows, setTableRows] = useState<Record<string, string[]>>(defaultTableRows);
+  const [tableCellAssets, setTableCellAssets] = useState<Record<string, Array<number | null>>>({});
   const [layoutPreset, setLayoutPreset] = useState("standard");
   const [optionLayout, setOptionLayout] = useState("single");
   const [optionImagePlacement, setOptionImagePlacement] = useState<OptionImagePlacement>("top");
   const [optionImageSizing, setOptionImageSizing] = useState<OptionImageSizing>("individual");
+  const [optionLabelPlacement, setOptionLabelPlacement] = useState<OptionLabelPlacement>("inline");
+  const [optionContentAlign, setOptionContentAlign] = useState<OptionContentAlign>("left");
+  const [tableShowBorders, setTableShowBorders] = useState(true);
+  const [tableShowHeaders, setTableShowHeaders] = useState(true);
   const [subject, setSubject] = useState("Physics");
   const [syllabus, setSyllabus] = useState("9702");
   const [examCode, setExamCode] = useState("");
@@ -495,7 +525,11 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
                 equation: "",
                 assetId: imageBlock?.asset_id ?? null,
                 imageWidth: imageBlock?.settings?.width ?? 100,
+                imageHeight: imageBlock?.settings?.height ?? 0,
                 imageFit: imageBlock?.settings?.fit ?? "contain",
+                imageAlign: imageBlock?.settings?.align ?? "center",
+                imageOffsetX: imageBlock?.settings?.offset_x ?? 0,
+                imageOffsetY: imageBlock?.settings?.offset_y ?? 0,
               };
             })
         : defaultOptions,
@@ -504,9 +538,11 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
     if (tableOptions.length) {
       setTableHeaders(tableOptions[0].layout_settings.table_headers?.length ? tableOptions[0].layout_settings.table_headers! : defaultTableHeaders);
       setTableRows(Object.fromEntries(tableOptions.map((option) => [option.label, option.layout_settings.table_cells ?? []])));
+      setTableCellAssets(Object.fromEntries(tableOptions.map((option) => [option.label, option.layout_settings.table_cell_asset_ids ?? []])));
     } else {
       setTableHeaders(defaultTableHeaders);
       setTableRows(defaultTableRows);
+      setTableCellAssets({});
     }
     setLayoutPreset(question.layout_preset || "standard");
     setOptionLayout(question.option_layout || "single");
@@ -521,6 +557,18 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
         ? optionImageLayoutSettings?.sizing as OptionImageSizing
         : "individual",
     );
+    setOptionLabelPlacement(
+      ["inline", "above"].includes(String(optionImageLayoutSettings?.label_placement))
+        ? optionImageLayoutSettings?.label_placement as OptionLabelPlacement
+        : "inline",
+    );
+    setOptionContentAlign(
+      ["left", "center", "right"].includes(String(optionImageLayoutSettings?.content_align))
+        ? optionImageLayoutSettings?.content_align as OptionContentAlign
+        : "left",
+    );
+    setTableShowBorders(optionImageLayoutSettings?.table_borders !== false);
+    setTableShowHeaders(optionImageLayoutSettings?.table_headers !== false);
     setSubject(question.subject || "Physics");
     setSyllabus(question.syllabus || "9702");
     setExamCode(question.exam_code || "");
@@ -619,8 +667,9 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
 
   function addOption() {
     const nextLabel = String.fromCharCode(65 + options.length);
-    setOptions((current) => [...current, { label: nextLabel, text: "", equation: "", assetId: null, imageWidth: 100, imageFit: "contain" }]);
+    setOptions((current) => [...current, createDefaultOption(nextLabel)]);
     setTableRows((current) => ({ ...current, [nextLabel]: Array.from({ length: tableHeaders.length }, () => "") }));
+    setTableCellAssets((current) => ({ ...current, [nextLabel]: Array.from({ length: tableHeaders.length }, () => null) }));
   }
 
   function removeOption(index: number) {
@@ -629,6 +678,7 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
     const nextOptions = options.filter((_, optionIndex) => optionIndex !== index);
     setOptions(nextOptions);
     setTableRows((current) => Object.fromEntries(Object.entries(current).filter(([label]) => label !== removedLabel)));
+    setTableCellAssets((current) => Object.fromEntries(Object.entries(current).filter(([label]) => label !== removedLabel)));
     if (correctOption === removedLabel) setCorrectOption(nextOptions[0]?.label ?? "A");
   }
 
@@ -639,18 +689,28 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
   function addTableColumn() {
     setTableHeaders((current) => [...current, `column ${current.length + 1}`]);
     setTableRows((current) => Object.fromEntries(options.map((option) => [option.label, [...(current[option.label] ?? []), ""]])));
+    setTableCellAssets((current) => Object.fromEntries(options.map((option) => [option.label, [...(current[option.label] ?? []), null]])));
   }
 
   function removeTableColumn(index: number) {
     if (tableHeaders.length <= 1) return;
     setTableHeaders((current) => current.filter((_, headerIndex) => headerIndex !== index));
     setTableRows((current) => Object.fromEntries(options.map((option) => [option.label, (current[option.label] ?? []).filter((_, cellIndex) => cellIndex !== index)])));
+    setTableCellAssets((current) => Object.fromEntries(options.map((option) => [option.label, (current[option.label] ?? []).filter((_, cellIndex) => cellIndex !== index)])));
   }
 
   function updateTableCell(label: string, columnIndex: number, value: string) {
     setTableRows((current) => {
       const row = [...(current[label] ?? Array.from({ length: tableHeaders.length }, () => ""))];
       row[columnIndex] = value;
+      return { ...current, [label]: row };
+    });
+  }
+
+  function updateTableCellAsset(label: string, columnIndex: number, assetId: number | null) {
+    setTableCellAssets((current) => {
+      const row = [...(current[label] ?? Array.from({ length: tableHeaders.length }, () => null))];
+      row[columnIndex] = assetId;
       return { ...current, [label]: row };
     });
   }
@@ -758,6 +818,10 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
         option.label,
         tableHeaders.map((_, index) => tableRows[option.label]?.[index] ?? ""),
       ])),
+      cell_asset_ids: Object.fromEntries(options.map((option) => [
+        option.label,
+        tableHeaders.map((_, index) => tableCellAssets[option.label]?.[index] ?? null),
+      ])),
     };
   }
 
@@ -767,7 +831,19 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
       [
         option.text.trim() ? { block_type: "text", text: option.text, order: 1 } : null,
         option.equation.trim() ? { block_type: "equation", text: option.equation.replace(/^\${1,2}|\${1,2}$/g, ""), order: 2 } : null,
-        option.assetId ? { block_type: "image", asset_id: option.assetId, order: 3, settings: { width: option.imageWidth, fit: option.imageFit } } : null,
+        option.assetId ? {
+          block_type: "image",
+          asset_id: option.assetId,
+          order: 3,
+          settings: {
+            width: option.imageWidth,
+            height: option.imageHeight,
+            fit: option.imageFit,
+            align: option.imageAlign,
+            offset_x: option.imageOffsetX,
+            offset_y: option.imageOffsetY,
+          },
+        } : null,
       ].filter(Boolean),
     ]));
   }
@@ -800,6 +876,10 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
         option_image_layout: {
           placement: optionImagePlacement,
           sizing: optionImageSizing,
+          label_placement: optionLabelPlacement,
+          content_align: optionContentAlign,
+          table_borders: tableShowBorders,
+          table_headers: tableShowHeaders,
         },
       },
       subject,
@@ -907,8 +987,13 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
     setOptions(defaultOptions.map((option) => ({ ...option })));
     setTableHeaders([...defaultTableHeaders]);
     setTableRows(Object.fromEntries(Object.entries(defaultTableRows).map(([label, row]) => [label, [...row]])));
+    setTableCellAssets({});
     setOptionImagePlacement("top");
     setOptionImageSizing("individual");
+    setOptionLabelPlacement("inline");
+    setOptionContentAlign("left");
+    setTableShowBorders(true);
+    setTableShowHeaders(true);
     setStep("question");
     setSourceQuestionNumber("");
     setNotes("");
@@ -920,7 +1005,7 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
     if (!questionId) applyMetadataDefaults();
   }
 
-  async function uploadAsset(file: File | null, assetType: "question" | "option", onDone: (asset: MCQAsset) => void) {
+  async function uploadAsset(file: File | null, assetType: "question" | "option" | "table_cell", onDone: (asset: MCQAsset) => void) {
     if (!file) return;
     setError(null);
     setStatus(null);
@@ -1081,7 +1166,18 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
   function renderOption(option: OptionDraft) {
     const asset = assets.find((item) => item.id === option.assetId);
     const cleanEquation = option.equation.trim().replace(/^\${1,2}|\${1,2}$/g, "");
-    const image = asset ? <img className={`a4-option-image fit-${option.imageFit}`} src={`${API_BASE}${asset.preview_url}`} alt={`${option.label} option`} style={{ width: `${option.imageWidth}%` }} /> : null;
+    const image = asset ? (
+      <img
+        className={`a4-option-image fit-${option.imageFit} align-${option.imageAlign}`}
+        src={`${API_BASE}${asset.preview_url}`}
+        alt={`${option.label} option`}
+        style={{
+          width: `${option.imageWidth}%`,
+          height: option.imageHeight ? `${option.imageHeight}px` : undefined,
+          transform: `translate(${option.imageOffsetX}px, ${option.imageOffsetY}px)`,
+        }}
+      />
+    ) : null;
     const content = (
       <>
         {option.text ? <span className="option-text-fragment">{renderMathText(option.text)}</span> : null}
@@ -1090,7 +1186,7 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
     );
     return (
       <>
-        <b>{option.label}.</b>
+        <b>{option.label}{optionLabelPlacement === "inline" ? "." : ""}</b>
         {optionImagePlacement === "top" ? image : null}
         {optionImagePlacement === "middle" && image ? <span className="option-media-middle">{image}<span>{content}</span></span> : content}
         {optionImagePlacement === "bottom" ? image : null}
@@ -1100,19 +1196,30 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
   }
 
   function renderOptionTablePreview() {
+    function renderCell(label: string, index: number) {
+      const text = tableRows[label]?.[index] ?? "";
+      const assetId = tableCellAssets[label]?.[index] ?? null;
+      const asset = assets.find((item) => item.id === assetId);
+      return (
+        <span className="mcq-table-cell-content">
+          {text ? <span>{renderMathText(text)}</span> : null}
+          {asset ? <img src={`${API_BASE}${asset.preview_url}`} alt={asset.original_name} /> : null}
+        </span>
+      );
+    }
     return (
-      <table className="mcq-answer-table-preview">
-        <thead>
+      <table className={`mcq-answer-table-preview ${tableShowBorders ? "" : "no-borders"} ${tableShowHeaders ? "" : "hide-headers"}`}>
+        {tableShowHeaders ? <thead>
           <tr>
             <th />
             {tableHeaders.map((header, index) => <th key={index}>{renderMathText(header)}</th>)}
           </tr>
-        </thead>
+        </thead> : null}
         <tbody>
           {options.map((option) => (
             <tr className={correctOption === option.label ? "correct" : ""} key={option.label}>
               <th>{option.label}</th>
-              {tableHeaders.map((_, index) => <td key={index}>{renderMathText(tableRows[option.label]?.[index] ?? "")}</td>)}
+              {tableHeaders.map((_, index) => <td key={index}>{renderCell(option.label, index)}</td>)}
             </tr>
           ))}
         </tbody>
@@ -1272,15 +1379,27 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
               <div className="section-intro compact"><strong>Answer choice arrangement</strong><span>Choose how A-D will be arranged on the generated paper.</span></div>
               <div className="option-layout-card-grid compact-option-layouts">{optionLayoutVisuals.map((item) => <button className={`option-layout-card ${optionLayout === item.value ? "active" : ""}`} key={item.value} onClick={() => { setOptionLayout(item.value); setLayoutPreset(item.value === "table" ? "table_options" : item.value === "grid" ? "option_grid" : "standard"); }} type="button"><span className={`option-layout-thumbnail ${item.className}`}><i /><i /><i /><i /></span><strong>{item.title}</strong></button>)}</div>
               {optionLayout !== "table" ? (
-                <div className="option-image-toolbar" aria-label="Option image layout controls">
-                  <button className={optionImagePlacement === "top" ? "active" : ""} type="button" onClick={() => setOptionImagePlacement("top")} title="Align option images to the top" aria-label="Align option images to the top"><AlignVerticalJustifyStart size={17} /></button>
-                  <button className={optionImagePlacement === "middle" ? "active" : ""} type="button" onClick={() => setOptionImagePlacement("middle")} title="Align option images through the middle" aria-label="Align option images through the middle"><AlignVerticalJustifyCenter size={17} /></button>
-                  <button className={optionImagePlacement === "bottom" ? "active" : ""} type="button" onClick={() => setOptionImagePlacement("bottom")} title="Align option images to the bottom" aria-label="Align option images to the bottom"><AlignVerticalJustifyEnd size={17} /></button>
-                  <span className="option-image-toolbar-divider" aria-hidden="true" />
-                  <button className={optionImageSizing === "individual" ? "active" : ""} type="button" onClick={() => setOptionImageSizing("individual")} title="Keep each option image at its own size" aria-label="Keep each option image at its own size"><Image size={17} /></button>
-                  <button className={optionImageSizing === "same_height" ? "active" : ""} type="button" onClick={() => setOptionImageSizing("same_height")} title="Make option images the same height" aria-label="Make option images the same height"><StretchVertical size={17} /></button>
-                  <button className={optionImageSizing === "same_width" ? "active" : ""} type="button" onClick={() => setOptionImageSizing("same_width")} title="Make option images the same width" aria-label="Make option images the same width"><StretchHorizontal size={17} /></button>
-                  <button className={optionImageSizing === "same_size" ? "active" : ""} type="button" onClick={() => setOptionImageSizing("same_size")} title="Make option images similar size" aria-label="Make option images similar size"><Scaling size={17} /></button>
+                <div className="option-control-panel">
+                  <div className="option-control-group">
+                    <strong>Option layout controls</strong>
+                    <div className="option-image-toolbar" aria-label="Option image layout controls">
+                      <button className={optionLabelPlacement === "inline" ? "active" : ""} type="button" onClick={() => setOptionLabelPlacement("inline")} title="Show option letters inline" aria-label="Show option letters inline">A.</button>
+                      <button className={optionLabelPlacement === "above" ? "active" : ""} type="button" onClick={() => setOptionLabelPlacement("above")} title="Show option letters above the content" aria-label="Show option letters above the content">A</button>
+                      <span className="option-image-toolbar-divider" aria-hidden="true" />
+                      <button className={optionContentAlign === "left" ? "active" : ""} type="button" onClick={() => setOptionContentAlign("left")} title="Align option content left" aria-label="Align option content left"><AlignLeft size={17} /></button>
+                      <button className={optionContentAlign === "center" ? "active" : ""} type="button" onClick={() => setOptionContentAlign("center")} title="Center option content" aria-label="Center option content"><AlignCenter size={17} /></button>
+                      <button className={optionContentAlign === "right" ? "active" : ""} type="button" onClick={() => setOptionContentAlign("right")} title="Align option content right" aria-label="Align option content right"><AlignRight size={17} /></button>
+                      <span className="option-image-toolbar-divider" aria-hidden="true" />
+                      <button className={optionImagePlacement === "top" ? "active" : ""} type="button" onClick={() => setOptionImagePlacement("top")} title="Place option images above text" aria-label="Place option images above text"><AlignVerticalJustifyStart size={17} /></button>
+                      <button className={optionImagePlacement === "middle" ? "active" : ""} type="button" onClick={() => setOptionImagePlacement("middle")} title="Place option images beside text" aria-label="Place option images beside text"><AlignVerticalJustifyCenter size={17} /></button>
+                      <button className={optionImagePlacement === "bottom" ? "active" : ""} type="button" onClick={() => setOptionImagePlacement("bottom")} title="Place option images below text" aria-label="Place option images below text"><AlignVerticalJustifyEnd size={17} /></button>
+                      <span className="option-image-toolbar-divider" aria-hidden="true" />
+                      <button className={optionImageSizing === "individual" ? "active" : ""} type="button" onClick={() => setOptionImageSizing("individual")} title="Keep each option image at its own size" aria-label="Keep each option image at its own size"><Image size={17} /></button>
+                      <button className={optionImageSizing === "same_height" ? "active" : ""} type="button" onClick={() => setOptionImageSizing("same_height")} title="Make option images the same height" aria-label="Make option images the same height"><StretchVertical size={17} /></button>
+                      <button className={optionImageSizing === "same_width" ? "active" : ""} type="button" onClick={() => setOptionImageSizing("same_width")} title="Make option images the same width" aria-label="Make option images the same width"><StretchHorizontal size={17} /></button>
+                      <button className={optionImageSizing === "same_size" ? "active" : ""} type="button" onClick={() => setOptionImageSizing("same_size")} title="Make option images similar size" aria-label="Make option images similar size"><Scaling size={17} /></button>
+                    </div>
+                  </div>
                 </div>
               ) : null}
               {optionLayout === "table" ? (
@@ -1289,6 +1408,8 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
                   <div className="table-editor-actions">
                     <button className="secondary-action" type="button" onClick={addTableColumn}><Plus size={15} />Add column</button>
                     <button className="secondary-action" type="button" onClick={() => setOptionLayout("single")}>Use normal options</button>
+                    <button className={`secondary-action ${tableShowBorders ? "active-soft" : ""}`} type="button" onClick={() => setTableShowBorders((value) => !value)}>Borders</button>
+                    <button className={`secondary-action ${tableShowHeaders ? "active-soft" : ""}`} type="button" onClick={() => setTableShowHeaders((value) => !value)}>Headings</button>
                   </div>
                   <div className="table-option-scroll">
                     <div className="answer-table-editor-grid" style={{ gridTemplateColumns: `72px repeat(${tableHeaders.length}, minmax(140px, 1fr)) 44px` }}>
@@ -1301,7 +1422,21 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
                     <div className="answer-table-body" style={{ gridTemplateColumns: `72px repeat(${tableHeaders.length}, minmax(140px, 1fr)) 44px` }}>
                       {options.flatMap((option) => [
                         <button className={`answer-row-select ${correctOption === option.label ? "correct" : ""}`} key={`${option.label}-select`} onClick={() => setCorrectOption(option.label)}>{option.label}</button>,
-                        ...tableHeaders.map((_, index) => <input key={`${option.label}-${index}`} value={tableRows[option.label]?.[index] ?? ""} onChange={(event) => updateTableCell(option.label, index, event.target.value)} placeholder="cell value" />),
+                        ...tableHeaders.map((_, index) => (
+                          <div className="table-cell-editor" key={`${option.label}-${index}`}>
+                            <input value={tableRows[option.label]?.[index] ?? ""} onChange={(event) => updateTableCell(option.label, index, event.target.value)} placeholder="text or $equation$" />
+                            <label title="Attach image to this table cell">
+                              <Image size={14} />
+                              <input
+                                type="file"
+                                accept="image/*"
+                                disabled={isUploadingAsset}
+                                onChange={(event) => uploadAsset(event.target.files?.[0] ?? null, "table_cell", (asset) => updateTableCellAsset(option.label, index, asset.id))}
+                              />
+                            </label>
+                            {tableCellAssets[option.label]?.[index] ? <button type="button" onClick={() => updateTableCellAsset(option.label, index, null)}>Clear</button> : null}
+                          </div>
+                        )),
                         <button className="icon-button danger-icon" disabled={options.length <= 2} key={`${option.label}-delete`} onClick={() => removeOption(options.findIndex((item) => item.label === option.label))}><Trash2 size={15} /></button>,
                       ])}
                     </div>
@@ -1323,7 +1458,20 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
                     <div className="option-equation-tools"><span><Sigma size={14} /></span>{equationSnippets.slice(0, 8).map((snippet) => <button key={snippet.title} type="button" title={snippet.title} aria-label={snippet.title} onClick={() => insertIntoOptionText(index, snippet.value)}>{snippet.icon}</button>)}</div>
                   </div>
                   <div className="option-asset-row"><label className="compact-upload-button"><UploadCloud size={15} />Upload image<input type="file" accept="image/*" disabled={isUploadingAsset} onChange={(event) => uploadAsset(event.target.files?.[0] ?? null, "option", (asset) => updateOption(index, { assetId: asset.id }))} /></label><select className="styled-select" value={option.assetId ?? ""} onChange={(event) => updateOption(index, { assetId: event.target.value ? Number(event.target.value) : null })}><option value="">No option image</option>{assets.map((asset) => <option value={asset.id} key={asset.id}>{asset.original_name}</option>)}</select>{option.assetId ? <button className="secondary-action" type="button" onClick={() => updateOption(index, { assetId: null })}>Remove</button> : null}</div>
-                  {option.assetId ? <div className="option-image-tools"><label><span>Image width</span><input type="range" min="25" max="100" step="5" value={option.imageWidth} onChange={(event) => updateOption(index, { imageWidth: Number(event.target.value) })} /></label><select value={option.imageFit} onChange={(event) => updateOption(index, { imageFit: event.target.value === "cover" ? "cover" : "contain" })}><option value="contain">Fit whole image</option><option value="cover">Crop to frame</option></select></div> : null}
+                  {option.assetId ? (
+                    <div className="option-image-tools extended">
+                      <label><span>Width %</span><input type="number" min="5" max="180" value={option.imageWidth} onChange={(event) => updateOption(index, { imageWidth: Number(event.target.value) })} /></label>
+                      <label><span>Height px</span><input type="number" min="0" max="260" value={option.imageHeight} onChange={(event) => updateOption(index, { imageHeight: Number(event.target.value) })} /></label>
+                      <label><span>X shift</span><input type="number" min="-120" max="120" value={option.imageOffsetX} onChange={(event) => updateOption(index, { imageOffsetX: Number(event.target.value) })} /></label>
+                      <label><span>Y shift</span><input type="number" min="-120" max="120" value={option.imageOffsetY} onChange={(event) => updateOption(index, { imageOffsetY: Number(event.target.value) })} /></label>
+                      <div className="option-image-mini-toolbar">
+                        <button className={option.imageAlign === "left" ? "active" : ""} type="button" onClick={() => updateOption(index, { imageAlign: "left" })} title="Align this image left"><AlignLeft size={16} /></button>
+                        <button className={option.imageAlign === "center" ? "active" : ""} type="button" onClick={() => updateOption(index, { imageAlign: "center" })} title="Center this image"><AlignCenter size={16} /></button>
+                        <button className={option.imageAlign === "right" ? "active" : ""} type="button" onClick={() => updateOption(index, { imageAlign: "right" })} title="Align this image right"><AlignRight size={16} /></button>
+                      </div>
+                      <select value={option.imageFit} onChange={(event) => updateOption(index, { imageFit: event.target.value === "cover" ? "cover" : "contain" })}><option value="contain">Fit whole image</option><option value="cover">Crop to frame</option></select>
+                    </div>
+                  ) : null}
                 </div>
                   ))}</div>
                   <button className="secondary-action" onClick={addOption}><Plus size={16} />Add option</button>
@@ -1368,7 +1516,7 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
                   <div className="paper-question-number">1</div>
                   <div className="paper-question-body">
                     <div className="question-block-preview rich-preview-content">{richContentHasContent() ? renderRichNode(richContent) : <p className="muted-preview">Write the question, insert equations, add images, or create a table.</p>}</div>
-                    {optionLayout === "table" ? renderOptionTablePreview() : <div className={`option-preview-grid layout-${optionLayout} option-images-${optionImageSizing}`}>{options.map((option) => <span className={correctOption === option.label ? "correct" : ""} key={option.label}>{renderOption(option)}</span>)}</div>}
+                    {optionLayout === "table" ? renderOptionTablePreview() : <div className={`option-preview-grid layout-${optionLayout} option-images-${optionImageSizing} label-${optionLabelPlacement} align-${optionContentAlign}`}>{options.map((option) => <span className={correctOption === option.label ? "correct" : ""} key={option.label}>{renderOption(option)}</span>)}</div>}
                   </div>
                 </div>
               </div>
