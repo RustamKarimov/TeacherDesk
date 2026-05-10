@@ -5093,14 +5093,14 @@ td,
   display: grid;
   border: 1px solid var(--line, #d8e1eb);
   border-radius: 8px;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .mcq-table-head,
 .mcq-table-row {
   display: grid;
-  grid-template-columns: 32px minmax(210px, 1.02fr) minmax(178px, 0.86fr) 78px minmax(164px, 0.78fr);
-  gap: 10px;
+  grid-template-columns: 32px minmax(210px, 0.9fr) minmax(190px, 0.9fr) 72px minmax(148px, 0.75fr);
+  gap: 8px;
   align-items: center;
 }
 
@@ -5119,6 +5119,11 @@ td,
   border-radius: 0;
   min-height: 70px;
   padding: 10px 12px;
+  position: relative;
+}
+
+.mcq-table-row:has(.inline-select-control.open) {
+  z-index: 12;
 }
 
 .mcq-table-row.active {
@@ -5133,6 +5138,7 @@ td,
 .mcq-status-cell {
   display: flex;
   justify-content: flex-start;
+  min-width: 0;
 }
 
 .mcq-inline-topic-cell {
@@ -5140,10 +5146,9 @@ td,
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 6px;
   align-items: center;
+  min-width: 0;
 }
 
-.mcq-inline-topic-cell select,
-.mcq-status-cell select,
 .mcq-mark-cell input {
   width: 100%;
   min-height: 38px;
@@ -5159,25 +5164,7 @@ td,
   transition: border-color 0.15s ease, background-color 0.15s ease, color 0.15s ease;
 }
 
-.mcq-inline-topic-cell select,
-.mcq-status-cell select {
-  appearance: none;
-  padding-right: 30px;
-  background-image:
-    linear-gradient(45deg, transparent 50%, currentColor 50%),
-    linear-gradient(135deg, currentColor 50%, transparent 50%);
-  background-position:
-    calc(100% - 17px) 50%,
-    calc(100% - 12px) 50%;
-  background-size: 5px 5px, 5px 5px;
-  background-repeat: no-repeat;
-}
-
-.mcq-inline-topic-cell select:hover,
-.mcq-status-cell select:hover,
 .mcq-mark-cell input:hover,
-.mcq-inline-topic-cell select:focus,
-.mcq-status-cell select:focus,
 .mcq-mark-cell input:focus {
   border-color: var(--primary, #14b8a6);
   outline: 0;
@@ -5196,16 +5183,105 @@ td,
   text-align: center;
 }
 
-.mcq-status-cell select.ok {
-  border-color: color-mix(in srgb, var(--success, #22c55e) 42%, transparent);
-  background-color: color-mix(in srgb, var(--success, #22c55e) 12%, var(--field-bg, #ffffff));
-  color: var(--success, #22c55e);
+.inline-select-control {
+  position: relative;
+  width: 100%;
+  min-width: 0;
 }
 
-.mcq-status-cell select.warn {
-  border-color: color-mix(in srgb, var(--amber, #f59e0b) 42%, transparent);
-  background-color: color-mix(in srgb, var(--amber, #f59e0b) 12%, var(--field-bg, #ffffff));
-  color: var(--amber, #f59e0b);
+.inline-select-button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-height: 38px;
+  border: 1px solid var(--border-soft, var(--line, #d8e1eb));
+  border-radius: 9px;
+  background: var(--field-bg, var(--input-bg, #ffffff));
+  color: var(--text-main, var(--text, #172033));
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  padding: 0 10px;
+  text-align: left;
+  transition: border-color 0.15s ease, background-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.inline-select-button span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inline-select-button svg {
+  flex: 0 0 auto;
+  color: var(--muted, #6b778c);
+}
+
+.inline-select-button:hover,
+.inline-select-control.open .inline-select-button,
+.inline-select-button:focus-visible {
+  border-color: var(--primary, #14b8a6);
+  outline: 0;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary, #14b8a6) 12%, transparent);
+}
+
+.inline-select-button:disabled {
+  cursor: wait;
+  opacity: 0.72;
+}
+
+.inline-select-menu {
+  position: absolute;
+  z-index: 80;
+  top: calc(100% + 5px);
+  left: 0;
+  right: 0;
+  max-height: 220px;
+  overflow: auto;
+  border: 1px solid var(--border-soft, var(--line, #d8e1eb));
+  border-radius: 9px;
+  background: var(--panel-bg, #ffffff);
+  box-shadow: 0 18px 36px color-mix(in srgb, #020617 28%, transparent);
+  padding: 6px;
+}
+
+.inline-select-menu button {
+  display: block;
+  width: 100%;
+  min-height: 34px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-main, var(--text, #172033));
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 590;
+  padding: 0 10px;
+  text-align: left;
+}
+
+.inline-select-menu button:hover,
+.inline-select-menu button.selected {
+  background: color-mix(in srgb, var(--primary, #14b8a6) 18%, transparent);
+  color: var(--text-main, var(--text, #172033));
+}
+
+.inline-select-control.tone-ready .inline-select-button,
+.inline-select-control.tone-verified .inline-select-button {
+  border-color: color-mix(in srgb, var(--primary, #14b8a6) 34%, var(--border-soft, #d8e1eb));
+  background: color-mix(in srgb, var(--primary, #14b8a6) 10%, var(--field-bg, #ffffff));
+  color: color-mix(in srgb, var(--primary, #14b8a6) 55%, var(--text-main, #172033));
+}
+
+.inline-select-control.tone-needs_review .inline-select-button {
+  border-color: color-mix(in srgb, var(--amber, #f59e0b) 38%, var(--border-soft, #d8e1eb));
+  background: color-mix(in srgb, var(--amber, #f59e0b) 9%, var(--field-bg, #ffffff));
+  color: color-mix(in srgb, var(--amber, #f59e0b) 58%, var(--text-main, #172033));
 }
 
 .table-check {
@@ -7641,6 +7717,6 @@ td,
 
   .mcq-table-head,
   .mcq-table-row {
-    grid-template-columns: 32px minmax(170px, 1.3fr) minmax(120px, 0.9fr) 60px 96px;
+    grid-template-columns: 32px minmax(170px, 0.95fr) minmax(140px, 0.9fr) 60px minmax(116px, 0.75fr);
   }
 }

@@ -1,4 +1,4 @@
-import { BadgeCheck, CheckSquare2, ClipboardList, FileQuestion, GraduationCap, Pencil, Plus, Search, Square, Trash2, UserCheck, X } from "lucide-react";
+import { BadgeCheck, CheckSquare2, ChevronDown, ClipboardList, FileQuestion, GraduationCap, Pencil, Plus, Search, Square, Trash2, UserCheck, X } from "lucide-react";
 import { type CSSProperties, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import type { JSONContent } from "@tiptap/react";
 import katex from "katex";
@@ -262,6 +262,67 @@ function SingleSelectFilter({
             <button
               className={item.value === value ? "selected" : ""}
               key={item.value || "any"}
+              onClick={() => {
+                onChange(item.value);
+                setIsOpen(false);
+              }}
+              type="button"
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function InlineSelectControl({
+  ariaLabel,
+  disabled = false,
+  options,
+  tone,
+  value,
+  onChange,
+}: {
+  ariaLabel: string;
+  disabled?: boolean;
+  options: Array<{ value: string; label: string }>;
+  tone?: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const wrapperRef = useRef<HTMLDivElement | null>(null);
+  const selectedLabel = options.find((item) => item.value === value)?.label ?? options[0]?.label ?? "";
+
+  useEffect(() => {
+    function closeIfOutside(event: MouseEvent) {
+      if (wrapperRef.current && !wrapperRef.current.contains(event.target as Node)) setIsOpen(false);
+    }
+    document.addEventListener("mousedown", closeIfOutside);
+    return () => document.removeEventListener("mousedown", closeIfOutside);
+  }, []);
+
+  return (
+    <div className={`inline-select-control ${isOpen ? "open" : ""} ${tone ? `tone-${tone}` : ""}`} ref={wrapperRef}>
+      <button
+        aria-expanded={isOpen}
+        aria-label={ariaLabel}
+        className="inline-select-button"
+        disabled={disabled}
+        onClick={() => setIsOpen((current) => !current)}
+        type="button"
+      >
+        <span>{selectedLabel}</span>
+        <ChevronDown size={15} />
+      </button>
+      {isOpen ? (
+        <div className="inline-select-menu">
+          {options.map((item) => (
+            <button
+              className={item.value === value ? "selected" : ""}
+              key={item.value || "empty"}
               onClick={() => {
                 onChange(item.value);
                 setIsOpen(false);
@@ -576,15 +637,16 @@ export function MCQQuestionBankView({
                 <button className="table-check" onClick={(event) => { event.stopPropagation(); toggleSelectedQuestion(row.id); }} type="button" title="Select question">{selectedQuestionIds.includes(row.id) ? <CheckSquare2 size={17} /> : <Square size={17} />}</button>
                 <span><strong>{row.title || `MCQ #${row.id}`}</strong><small>{row.exam_code || row.source || "Manual question"} {row.source_question_number ? `/ ${row.source_question_number}` : ""}</small></span>
                 <span className="mcq-inline-topic-cell" onClick={(event) => event.stopPropagation()}>
-                  <select
+                  <InlineSelectControl
+                    ariaLabel={`Change topic for ${row.title || `MCQ #${row.id}`}`}
                     disabled={savingRowId === row.id}
-                    value={row.topics[0]?.id ?? ""}
-                    onChange={(event) => updateRowTopic(row, event.target.value)}
-                    title={row.topics.map((item) => item.name).join(", ")}
-                  >
-                    <option value="">No topic</option>
-                    {(metadata?.topics ?? []).map((topic) => <option key={topic.id} value={topic.id}>{topic.name}</option>)}
-                  </select>
+                    onChange={(value) => updateRowTopic(row, value)}
+                    options={[
+                      { value: "", label: "No topic" },
+                      ...(metadata?.topics ?? []).map((topic) => ({ value: String(topic.id), label: topic.name })),
+                    ]}
+                    value={row.topics[0]?.id ? String(row.topics[0].id) : ""}
+                  />
                   {row.topics.length > 1 ? <small>+{row.topics.length - 1}</small> : null}
                 </span>
                 <span className="mcq-mark-cell" onClick={(event) => event.stopPropagation()}>
@@ -598,14 +660,14 @@ export function MCQQuestionBankView({
                   />
                 </span>
                 <span className="mcq-status-cell" onClick={(event) => event.stopPropagation()}>
-                  <select
-                    className={row.review_status === "needs_review" ? "warn" : row.review_status === "verified" || row.review_status === "ready" ? "ok" : ""}
+                  <InlineSelectControl
+                    ariaLabel={`Change review status for ${row.title || `MCQ #${row.id}`}`}
                     disabled={savingRowId === row.id}
+                    onChange={(value) => quickUpdateQuestion(row.id, { review_status: value as MCQReviewStatus })}
+                    options={(metadata?.review_statuses ?? []).map((status) => ({ value: status.value, label: status.label }))}
+                    tone={row.review_status}
                     value={row.review_status}
-                    onChange={(event) => quickUpdateQuestion(row.id, { review_status: event.target.value as MCQReviewStatus })}
-                  >
-                    {(metadata?.review_statuses ?? []).map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}
-                  </select>
+                  />
                 </span>
               </div>
             )) : <div className="dashboard-empty">No MCQ questions match these filters.</div>}
