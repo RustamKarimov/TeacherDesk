@@ -5462,9 +5462,16 @@ td,
   gap: 8px;
   max-height: 540px;
   overflow: auto;
-  padding-right: 4px;
+  padding: 14px 14px 14px 14px;
   scrollbar-width: thin;
   scrollbar-color: color-mix(in srgb, var(--teal, #14b8a6) 45%, #64748b) transparent;
+}
+
+.metadata-new-topic {
+  min-height: 30px;
+  padding: 0 9px;
+  font-size: 12px;
+  font-weight: 750;
 }
 
 .metadata-topic-row {
@@ -5571,9 +5578,49 @@ td,
   align-content: start;
   max-height: 420px;
   overflow: auto;
-  padding-right: 4px;
+  margin-bottom: 14px;
+  padding: 0 4px 0 0;
   scrollbar-width: thin;
   scrollbar-color: color-mix(in srgb, var(--teal, #14b8a6) 45%, #64748b) transparent;
+}
+
+.metadata-detail > :not(.dashboard-widget-head),
+.metadata-tags > :not(.dashboard-widget-head) {
+  margin-left: 16px;
+  margin-right: 16px;
+}
+
+.metadata-detail > .metadata-editor-state,
+.metadata-tags > .metadata-chip-cloud {
+  margin-top: 16px;
+}
+
+.metadata-detail > :last-child,
+.metadata-tags > :last-child {
+  margin-bottom: 16px;
+}
+
+.metadata-detail .option-entry-grid {
+  margin-top: 0;
+}
+
+.metadata-detail input[type="color"] {
+  width: 100%;
+  height: 44px;
+  border: 1px solid var(--line, #d8e1eb);
+  border-radius: 8px;
+  background: var(--input-bg, #ffffff);
+  cursor: pointer;
+  padding: 7px;
+}
+
+.metadata-detail input[type="color"]::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.metadata-detail input[type="color"]::-webkit-color-swatch {
+  border: 0;
+  border-radius: 6px;
 }
 
 @media (max-width: 1320px) {
@@ -6035,7 +6082,8 @@ td,
 }
 
 .metadata-manager,
-.metadata-detail {
+.metadata-detail,
+.metadata-tags {
   min-width: 0;
 }
 
@@ -6052,8 +6100,15 @@ td,
 }
 
 .secondary-action.danger {
+  border-color: color-mix(in srgb, #f59e0b 38%, var(--line));
+  background: color-mix(in srgb, #f59e0b 8%, transparent);
+  color: #f59e0b;
+}
+
+.secondary-action.danger:hover:not(:disabled) {
   border-color: color-mix(in srgb, #ef4444 45%, var(--line));
-  color: #ef4444;
+  background: color-mix(in srgb, #ef4444 10%, transparent);
+  color: #fb7185;
 }
 
 .metadata-subsection {

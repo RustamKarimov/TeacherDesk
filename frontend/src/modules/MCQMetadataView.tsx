@@ -1,4 +1,4 @@
-import { CheckCircle2, Layers3, Plus, RefreshCw, Save, Tags, Trash2 } from "lucide-react";
+import { CheckCircle2, ListTree, Plus, RefreshCw, Save, Tags, Trash2, Workflow } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { API_BASE, readJson } from "../api";
@@ -147,16 +147,16 @@ export function MCQMetadataView() {
         {message ? <div className="callout success">{message}</div> : null}
 
         <div className="metadata-summary-row">
-          <article><Layers3 size={18} /><span>Topics</span><strong>{metadata?.topics.length ?? 0}</strong></article>
+          <article><Workflow size={18} /><span>Topics</span><strong>{metadata?.topics.length ?? 0}</strong></article>
           <article><Tags size={18} /><span>Tags</span><strong>{metadata?.tags.length ?? 0}</strong></article>
-          <article><Layers3 size={18} /><span>Subtopics</span><strong>{metadata?.topics.reduce((sum, topic) => sum + topic.subtopics.length, 0) ?? 0}</strong></article>
+          <article><ListTree size={18} /><span>Subtopics</span><strong>{metadata?.topics.reduce((sum, topic) => sum + topic.subtopics.length, 0) ?? 0}</strong></article>
         </div>
 
         <div className="mcq-metadata-grid">
         <div className="dashboard-widget metadata-manager">
           <div className="dashboard-widget-head">
             <div><strong>Topics</strong><span>Reusable metadata for MCQ generation and future analytics.</span></div>
-            <button className="secondary-action" onClick={createTopic}><Plus size={16} />New topic</button>
+            <button className="secondary-action compact-action metadata-new-topic" onClick={createTopic}><Plus size={14} />New topic</button>
           </div>
           <div className="metadata-list">
             {metadata?.topics.length ? metadata.topics.map((topic) => (
@@ -173,14 +173,14 @@ export function MCQMetadataView() {
           <div className="dashboard-widget-head">
             <div>
               <strong>{isCreatingTopic ? "Create topic" : "Topic details"}</strong>
-              <span>{isCreatingTopic ? "Add a new topic for future filters and exam generation." : selectedTopic ? `Editing ${selectedTopic.name}` : "Select a topic to edit."}</span>
+              <span>{isCreatingTopic ? "Add a new topic for future filters and exam generation." : selectedTopic ? selectedTopic.name : "Select a topic to edit."}</span>
             </div>
             <span className={`metadata-state-pill ${topicDraft.is_active ? "active" : ""}`}>{topicDraft.is_active ? "Active" : "Archived"}</span>
           </div>
           <div className="metadata-editor-state">
             {isCreatingTopic ? <Plus size={18} /> : <CheckCircle2 size={18} />}
             <div>
-              <strong>{isCreatingTopic ? "Creating a new topic" : selectedTopic ? `Editing ${selectedTopic.name}` : "No topic selected"}</strong>
+              <strong>{isCreatingTopic ? "New topic draft" : selectedTopic ? "Selected topic" : "No topic selected"}</strong>
               <span>{isCreatingTopic ? "This will become available in MCQ filters after saving." : selectedTopic ? `${selectedTopic.question_count} questions currently use this topic.` : "Choose a topic from the list or create one."}</span>
             </div>
           </div>
