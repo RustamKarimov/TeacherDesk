@@ -1,13 +1,14 @@
-import { BookOpen, Database, FolderOpen, Settings, Shuffle } from "lucide-react";
+import { BookOpen, Database, FileQuestion, FolderOpen, Settings, Shuffle, Tags } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { API_BASE, readJson } from "../api";
-import type { DashboardPayload } from "../types";
+import type { DashboardPayload, MCQDashboardPayload } from "../types";
 
-type DashboardModuleName = "Dashboard" | "Splitter" | "Question Bank" | "Exam Generator" | "Settings";
+type DashboardModuleName = "Dashboard" | "Splitter" | "Question Bank" | "Exam Generator" | "Settings" | "MCQ Question Bank" | "Add MCQ Question" | "MCQ Exam Generator" | "MCQ Metadata";
 
 export function DashboardView({ onOpenModule }: { onOpenModule: (module: DashboardModuleName) => void }) {
   const [dashboard, setDashboard] = useState<DashboardPayload | null>(null);
+  const [mcqDashboard, setMcqDashboard] = useState<MCQDashboardPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedCalendarDate, setSelectedCalendarDate] = useState("");
   const [reviewTab, setReviewTab] = useState<"all" | "qp" | "ms">("all");
@@ -17,6 +18,10 @@ export function DashboardView({ onOpenModule }: { onOpenModule: (module: Dashboa
       .then((response) => readJson<DashboardPayload>(response))
       .then(setDashboard)
       .catch((caught) => setError(caught instanceof Error ? caught.message : "Could not load dashboard."));
+    fetch(`${API_BASE}/api/mcq/dashboard/`)
+      .then((response) => readJson<MCQDashboardPayload>(response))
+      .then(setMcqDashboard)
+      .catch(() => setMcqDashboard(null));
   }, []);
 
   useEffect(() => {
@@ -97,6 +102,41 @@ export function DashboardView({ onOpenModule }: { onOpenModule: (module: Dashboa
                   ["Folders", dashboard.folder_health.every((item) => item.ready) ? "Ready" : "Needs setup", "Local storage"],
                 ]}
                 action="Open Settings"
+              />
+              <ModuleStatusCard
+                icon={FileQuestion}
+                title="MCQ Bank"
+                subtitle="Multiple-choice questions"
+                badge={mcqDashboard ? "Ready" : "Offline"}
+                tone={mcqDashboard ? "success" : "warning"}
+                onOpen={() => onOpenModule("MCQ Question Bank")}
+                stats={[
+                  ["Questions", String(mcqDashboard?.summary.questions ?? 0), `${mcqDashboard?.summary.ready_verified ?? 0} ready / verified`],
+                  ["Review", String(mcqDashboard?.summary.needs_review ?? 0), "Needs checking"],
+                ]}
+                action="Open MCQ Bank"
+              />
+              <ModuleStatusCard
+                icon={Shuffle}
+                title="MCQ Generator"
+                subtitle="Variants & answer keys"
+                onOpen={() => onOpenModule("MCQ Exam Generator")}
+                stats={[
+                  ["Generated", String(mcqDashboard?.summary.generated_papers ?? 0), "MCQ paper sets"],
+                  ["Assets", String(mcqDashboard?.summary.assets ?? 0), "Local images"],
+                ]}
+                action="Open MCQ Generator"
+              />
+              <ModuleStatusCard
+                icon={Tags}
+                title="MCQ Metadata"
+                subtitle="Topics, tags, subtopics"
+                onOpen={() => onOpenModule("MCQ Metadata")}
+                stats={[
+                  ["Topics", String(mcqDashboard?.summary.topics ?? 0), "Reusable filters"],
+                  ["Equations", String(mcqDashboard?.coverage.equation ?? 0), "Question coverage"],
+                ]}
+                action="Open Metadata"
               />
             </div>
 

@@ -1,4 +1,4 @@
-import { AlignCenter, AlignLeft, AlignRight, AlignVerticalJustifyCenter, AlignVerticalJustifyEnd, AlignVerticalJustifyStart, Bold, Check, Heading2, Image, Italic, List, ListOrdered, Plus, Redo2, Save, Scaling, Sigma, StretchHorizontal, StretchVertical, Table2, Trash2, Underline, Undo2, UploadCloud } from "lucide-react";
+import { AlignCenter, AlignLeft, AlignRight, AlignVerticalJustifyCenter, AlignVerticalJustifyEnd, AlignVerticalJustifyStart, Bold, Check, Heading2, Image, Italic, List, ListOrdered, Pi, Plus, Radical, Redo2, Save, Scaling, Sigma, SquarePi, StretchHorizontal, StretchVertical, Subscript, Superscript, Table2, Trash2, Underline, Undo2, UploadCloud } from "lucide-react";
 import { EditorContent, type JSONContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import TiptapImage from "@tiptap/extension-image";
@@ -150,19 +150,39 @@ const RichImage = TiptapImage.extend({
   },
 });
 
-const equationSnippets = [
-  { label: "a/b", value: "\\frac{a}{b}", title: "Fraction" },
-  { label: "x^2", value: "x^{2}", title: "Power" },
-  { label: "x_n", value: "x_{n}", title: "Subscript" },
-  { label: "sqrt", value: "\\sqrt{x}", title: "Square root" },
-  { label: "vec v", value: "\\vec{v}", title: "Vector" },
-  { label: "theta", value: "\\theta", title: "Theta" },
-  { label: "Delta", value: "\\Delta", title: "Delta" },
-  { label: "pi", value: "\\pi", title: "Pi" },
-  { label: "sum", value: "\\sum_{i=1}^{n}", title: "Summation" },
-  { label: "int", value: "\\int_{a}^{b}", title: "Integral" },
-  { label: "lim", value: "\\lim_{x\\to 0}", title: "Limit" },
-  { label: "[ ]", value: "\\begin{bmatrix} a & b \\\\ c & d \\end{bmatrix}", title: "Matrix" },
+function FractionShortcutIcon() {
+  return <span className="math-shortcut-icon fraction-icon" aria-hidden="true"><i>a</i><b /><i>b</i></span>;
+}
+
+function VectorShortcutIcon() {
+  return <span className="math-shortcut-icon vector-icon" aria-hidden="true"><i>v</i></span>;
+}
+
+function GreekShortcutIcon({ symbol }: { symbol: string }) {
+  return <span className="math-shortcut-icon greek-icon" aria-hidden="true">{symbol}</span>;
+}
+
+function IntegralShortcutIcon() {
+  return <span className="math-shortcut-icon integral-icon" aria-hidden="true">∫</span>;
+}
+
+function LimitShortcutIcon() {
+  return <span className="math-shortcut-icon limit-icon" aria-hidden="true">lim</span>;
+}
+
+const equationSnippets: Array<{ icon: ReactNode; value: string; title: string }> = [
+  { icon: <FractionShortcutIcon />, value: "\\frac{a}{b}", title: "Fraction" },
+  { icon: <Superscript size={17} />, value: "x^{2}", title: "Power" },
+  { icon: <Subscript size={17} />, value: "x_{n}", title: "Subscript" },
+  { icon: <Radical size={17} />, value: "\\sqrt{x}", title: "Square root" },
+  { icon: <VectorShortcutIcon />, value: "\\vec{v}", title: "Vector" },
+  { icon: <GreekShortcutIcon symbol="θ" />, value: "\\theta", title: "Theta" },
+  { icon: <GreekShortcutIcon symbol="Δ" />, value: "\\Delta", title: "Delta" },
+  { icon: <Pi size={17} />, value: "\\pi", title: "Pi" },
+  { icon: <Sigma size={17} />, value: "\\sum_{i=1}^{n}", title: "Summation" },
+  { icon: <IntegralShortcutIcon />, value: "\\int_{a}^{b}", title: "Integral" },
+  { icon: <LimitShortcutIcon />, value: "\\lim_{x\\to 0}", title: "Limit" },
+  { icon: <Table2 size={17} />, value: "\\begin{bmatrix} a & b \\\\ c & d \\end{bmatrix}", title: "Matrix" },
 ];
 
 function clipboardImageFile(event: { clipboardData: DataTransfer | null }): File | null {
@@ -1234,8 +1254,8 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
                 </div>
                 <div className="rich-equation-palette">
                   <span title="Inline equation shortcuts"><Sigma size={15} /></span>
-                  {equationSnippets.map((snippet) => <button key={snippet.title} type="button" title={snippet.title} onClick={() => insertEditorMath(snippet.value)}>{snippet.label}</button>)}
-                  <button type="button" title="Block equation" onClick={() => insertEditorMath("\\frac{mv^2}{r}", true)}>Block eqn</button>
+                  {equationSnippets.map((snippet) => <button key={snippet.title} type="button" title={snippet.title} aria-label={snippet.title} onClick={() => insertEditorMath(snippet.value)}>{snippet.icon}</button>)}
+                  <button type="button" title="Block equation" aria-label="Block equation" onClick={() => insertEditorMath("\\frac{mv^2}{r}", true)}><SquarePi size={17} /></button>
                 </div>
                 <div className="a4-editor-stage" ref={editorScaleRef}>
                   <div className="a4-scale-shell" style={{ "--a4-scale": editorScale } as CSSProperties}>
@@ -1301,7 +1321,7 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
                   <div className="option-card-head"><button className="option-letter" onClick={() => setCorrectOption(option.label)} title="Mark as correct">{option.label}</button><div><strong>{correctOption === option.label ? "Correct answer" : "Answer option"}</strong><span>Text, equation, image, or a combination.</span></div><button className="icon-button" disabled={options.length <= 2} onClick={() => removeOption(index)}><Trash2 size={15} /></button></div>
                   <textarea value={option.text} onPaste={(event) => handleOptionPaste(event, index)} onChange={(event) => updateOption(index, { text: event.target.value })} placeholder={`Type option ${option.label}. Use $\\frac{1}{2}mv^2$ for inline maths. Paste an image here to attach it.`} />
                   <div className="option-equation-panel compact">
-                    <div className="option-equation-tools"><span><Sigma size={14} /></span>{equationSnippets.slice(0, 8).map((snippet) => <button key={snippet.title} type="button" title={snippet.title} onClick={() => insertIntoOptionText(index, snippet.value)}>{snippet.label}</button>)}</div>
+                    <div className="option-equation-tools"><span><Sigma size={14} /></span>{equationSnippets.slice(0, 8).map((snippet) => <button key={snippet.title} type="button" title={snippet.title} aria-label={snippet.title} onClick={() => insertIntoOptionText(index, snippet.value)}>{snippet.icon}</button>)}</div>
                   </div>
                   <div className="option-asset-row"><label className="compact-upload-button"><UploadCloud size={15} />Upload image<input type="file" accept="image/*" disabled={isUploadingAsset} onChange={(event) => uploadAsset(event.target.files?.[0] ?? null, "option", (asset) => updateOption(index, { assetId: asset.id }))} /></label><select className="styled-select" value={option.assetId ?? ""} onChange={(event) => updateOption(index, { assetId: event.target.value ? Number(event.target.value) : null })}><option value="">No option image</option>{assets.map((asset) => <option value={asset.id} key={asset.id}>{asset.original_name}</option>)}</select>{option.assetId ? <button className="secondary-action" type="button" onClick={() => updateOption(index, { assetId: null })}>Remove</button> : null}</div>
                   {option.assetId ? <div className="option-image-tools"><label><span>Image width</span><input type="range" min="25" max="100" step="5" value={option.imageWidth} onChange={(event) => updateOption(index, { imageWidth: Number(event.target.value) })} /></label><select value={option.imageFit} onChange={(event) => updateOption(index, { imageFit: event.target.value === "cover" ? "cover" : "contain" })}><option value="contain">Fit whole image</option><option value="cover">Crop to frame</option></select></div> : null}

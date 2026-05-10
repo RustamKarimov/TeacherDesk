@@ -76,17 +76,49 @@ button:disabled {
 
 .module-nav {
   display: grid;
-  gap: 6px;
+  gap: 8px;
+  min-height: 0;
+  overflow: auto;
+  padding-right: 2px;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--primary, #14b8a6) 45%, #64748b) transparent;
 }
 
-.nav-section-label {
-  display: block;
-  margin: 12px 8px 4px;
+.nav-section {
+  display: grid;
+  gap: 4px;
+}
+
+.nav-section-toggle {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  min-height: 28px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
   color: var(--muted, #6b778c);
   font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.04em;
+  padding: 0 8px;
+  text-align: left;
   text-transform: uppercase;
+  cursor: pointer;
+}
+
+.nav-section.active-section > .nav-section-toggle {
+  color: var(--primary, #0f766e);
+}
+
+.nav-section-toggle:hover {
+  background: color-mix(in srgb, var(--primary, #0f766e) 10%, transparent);
+}
+
+.nav-section-items {
+  display: grid;
+  gap: 4px;
 }
 
 .module-nav button {
@@ -99,7 +131,7 @@ button:disabled {
   background: transparent;
   color: #42526e;
   font-size: 14px;
-  padding: 11px 12px;
+  padding: 9px 10px;
   text-align: left;
   cursor: pointer;
 }
@@ -108,10 +140,26 @@ button:disabled {
   background: #e6f4f1;
   color: #0f766e;
   font-weight: 700;
+  box-shadow: inset 3px 0 0 currentColor;
 }
 
 .module-nav button:hover {
   background: #eef5f8;
+}
+
+.module-nav .nav-section-toggle {
+  min-height: 28px;
+  gap: 7px;
+  color: var(--muted, #6b778c);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  padding: 0 8px;
+  text-transform: uppercase;
+}
+
+.module-nav .active-section > .nav-section-toggle {
+  color: var(--primary, #0f766e);
 }
 
 .workspace {
@@ -3565,7 +3613,7 @@ td,
 
 .dashboard-module-row {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 10px;
 }
 
@@ -6708,21 +6756,57 @@ td,
 }
 
 .rich-equation-palette button {
-  min-width: 42px;
-  padding: 0 10px;
-  font-family: inherit;
-  font-size: 13px;
+  min-width: 38px;
+  padding: 0;
   letter-spacing: 0;
 }
 
-.rich-equation-palette button[title="Fraction"],
-.option-equation-tools button[title="Fraction"] {
-  font-size: 17px;
+.math-shortcut-icon {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  color: currentColor;
+  font-family: Cambria Math, "Times New Roman", serif;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1;
 }
 
-.rich-equation-palette button[title="Matrix"],
-.option-equation-tools button[title="Matrix"] {
-  letter-spacing: 1px;
+.fraction-icon {
+  grid-template-rows: 1fr 1px 1fr;
+  gap: 1px;
+}
+
+.fraction-icon b {
+  display: block;
+  width: 16px;
+  height: 1.5px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.vector-icon::before {
+  content: "";
+  position: absolute;
+  top: 1px;
+  left: 4px;
+  width: 11px;
+  height: 5px;
+  border-top: 1.7px solid currentColor;
+  border-right: 1.7px solid currentColor;
+  transform: skewX(-28deg);
+}
+
+.greek-icon,
+.integral-icon {
+  font-size: 18px;
+}
+
+.limit-icon {
+  font-size: 9px;
+  letter-spacing: -0.02em;
 }
 
 .rich-toolbar-select {
@@ -7071,6 +7155,7 @@ td,
 }
 
 .option-equation-tools button {
+  min-width: 36px;
   cursor: pointer;
 }
 

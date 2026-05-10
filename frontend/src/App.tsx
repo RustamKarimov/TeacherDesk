@@ -1,7 +1,7 @@
 import {
   BookOpen,
-  BookOpenCheck,
   ChevronDown,
+  ChevronRight,
   Database,
   FolderOpen,
   LayoutDashboard,
@@ -19,7 +19,6 @@ import { API_BASE, readJson } from "./api";
 import { DashboardView } from "./modules/DashboardView";
 import { ExamGeneratorView } from "./modules/ExamGeneratorView";
 import { MCQAddQuestionView } from "./modules/MCQAddQuestionView";
-import { MCQDashboardView } from "./modules/MCQDashboardView";
 import { MCQExamGeneratorView } from "./modules/MCQExamGeneratorView";
 import { MCQMetadataView } from "./modules/MCQMetadataView";
 import { MCQQuestionBankView } from "./modules/MCQQuestionBankView";
@@ -35,7 +34,6 @@ const modules = [
   { name: "Splitter", icon: FolderOpen, section: "Paper Library" },
   { name: "Question Bank", icon: BookOpen, section: "Paper Library" },
   { name: "Exam Generator", icon: Shuffle, section: "Paper Library" },
-  { name: "MCQ Builder", icon: BookOpenCheck, section: "MCQ Builder" },
   { name: "MCQ Question Bank", icon: BookOpen, section: "MCQ Builder" },
   { name: "Add MCQ Question", icon: PencilLine, section: "MCQ Builder" },
   { name: "MCQ Exam Generator", icon: Shuffle, section: "MCQ Builder" },
@@ -54,6 +52,8 @@ export function App() {
   const [manualMcqExamQuestionIds, setManualMcqExamQuestionIds] = useState<number[]>([]);
   const [editingMcqQuestionId, setEditingMcqQuestionId] = useState<number | null>(null);
   const [theme, setTheme] = useState<"dark" | "light">(() => (localStorage.getItem("teacherdesk-theme") === "light" ? "light" : "dark"));
+  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
+  const navSections = Array.from(new Set(modules.map((module) => module.section)));
 
   useEffect(() => {
     fetch(`${API_BASE}/api/libraries/settings/`)
@@ -86,16 +86,33 @@ export function App() {
         </div>
 
         <nav className="module-nav">
-          {modules.map((module, index) => {
-            const Icon = module.icon;
-            const previous = modules[index - 1];
+          {navSections.map((section) => {
+            const sectionModules = modules.filter((module) => module.section === section);
+            const sectionActive = sectionModules.some((module) => module.name === activeModule);
+            const collapsed = collapsedSections[section] ?? false;
             return (
-              <div key={module.name}>
-                {!previous || previous.section !== module.section ? <span className="nav-section-label">{module.section}</span> : null}
-                <button className={activeModule === module.name ? "active" : ""} onClick={() => setActiveModule(module.name)}>
-                  <Icon size={18} />
-                  {module.name}
+              <div className={`nav-section ${sectionActive ? "active-section" : ""}`} key={section}>
+                <button
+                  className="nav-section-toggle"
+                  onClick={() => setCollapsedSections((current) => ({ ...current, [section]: !collapsed }))}
+                  type="button"
+                >
+                  {collapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+                  <span>{section}</span>
                 </button>
+                {!collapsed ? (
+                  <div className="nav-section-items">
+                    {sectionModules.map((module) => {
+                      const Icon = module.icon;
+                      return (
+                        <button className={activeModule === module.name ? "active" : ""} key={module.name} onClick={() => setActiveModule(module.name)}>
+                          <Icon size={17} />
+                          {module.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : null}
               </div>
             );
           })}
@@ -158,7 +175,6 @@ export function App() {
             onOpenQuestionBank={() => setActiveModule("Question Bank")}
           />
         ) : null}
-        {activeModule === "MCQ Builder" ? <MCQDashboardView onOpenModule={setActiveModule} /> : null}
         {activeModule === "MCQ Question Bank" ? (
           <MCQQuestionBankView
             onAddQuestion={() => {
