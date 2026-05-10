@@ -801,6 +801,47 @@ def update_question(request, question_id: int):
 
 
 @csrf_exempt
+def quick_update_question(request, question_id: int):
+    if request.method != "POST":
+        return JsonResponse({"error": "POST is required."}, status=405)
+    try:
+        payload = json.loads(request.body or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Request body must be valid JSON."}, status=400)
+    library = active_library()
+    try:
+        question = MCQQuestion.objects.get(id=question_id, library=library)
+    except MCQQuestion.DoesNotExist:
+        return JsonResponse({"error": "MCQ question not found."}, status=404)
+
+    update_fields = []
+    if "marks" in payload:
+        try:
+            question.marks = max(int(payload.get("marks") or 0), 0)
+        except (TypeError, ValueError):
+            return JsonResponse({"error": "marks must be a whole number."}, status=400)
+        update_fields.append("marks")
+
+    if "review_status" in payload:
+        allowed_review_statuses = {choice.value for choice in MCQQuestion.ReviewStatus}
+        review_status = str(payload.get("review_status") or "").strip()
+        if review_status not in allowed_review_statuses:
+            return JsonResponse({"error": "review_status is not valid."}, status=400)
+        question.review_status = review_status
+        update_fields.append("review_status")
+
+    if update_fields:
+        update_fields.append("updated_at")
+        question.save(update_fields=update_fields)
+
+    if "topic_ids" in payload:
+        topic_ids = payload.get("topic_ids") or []
+        question.topics.set(MCQTopic.objects.filter(library=library, id__in=topic_ids))
+
+    return JsonResponse(_question_payload(question, include_detail=True))
+
+
+@csrf_exempt
 def duplicate_question(request, question_id: int):
     if request.method != "POST":
         return JsonResponse({"error": "POST is required."}, status=405)
@@ -1181,6 +1222,7 @@ urlpatterns = [
     path("questions/", questions),
     path("questions/create/", create_question),
     path("questions/<int:question_id>/", question_detail),
+    path("questions/<int:question_id>/quick-update/", quick_update_question),
     path("questions/<int:question_id>/update/", update_question),
     path("questions/<int:question_id>/duplicate/", duplicate_question),
     path("questions/<int:question_id>/delete/", delete_question),

@@ -301,6 +301,7 @@ export function MCQQuestionBankView({
   const [selectedQuestionIds, setSelectedQuestionIds] = useState<number[]>([]);
   const [examBasketIds, setExamBasketIds] = useState<number[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
+  const [savingRowId, setSavingRowId] = useState<number | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [pageCount, setPageCount] = useState(1);
@@ -402,6 +403,37 @@ export function MCQQuestionBankView({
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not delete selected MCQ questions.");
     }
+  }
+
+  function replaceRow(updated: MCQQuestionRow) {
+    setRows((current) => current.map((row) => (row.id === updated.id ? updated : row)));
+    setSelectedDetail((current) => (current?.id === updated.id ? { ...current, ...updated } as MCQQuestionDetailPayload : current));
+  }
+
+  async function quickUpdateQuestion(questionId: number, patch: { marks?: number; review_status?: MCQReviewStatus; topic_ids?: number[] }) {
+    setError(null);
+    setSavingRowId(questionId);
+    try {
+      const response = await fetch(`${API_BASE}/api/mcq/questions/${questionId}/quick-update/`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+      const updated = await readJson<MCQQuestionDetailPayload>(response);
+      replaceRow(updated);
+      setNotice("Question metadata updated.");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not update question metadata.");
+      setReloadToken((current) => current + 1);
+    } finally {
+      setSavingRowId(null);
+    }
+  }
+
+  function updateRowTopic(question: MCQQuestionRow, topicId: string) {
+    const currentTopicIds = question.topics.map((topic) => topic.id);
+    const nextTopicIds = topicId ? [Number(topicId), ...currentTopicIds.filter((id) => id !== Number(topicId))] : [];
+    void quickUpdateQuestion(question.id, { topic_ids: nextTopicIds });
   }
 
   function renderSelectedQuestionPreview() {
@@ -537,18 +569,44 @@ export function MCQQuestionBankView({
           <div className="mcq-table">
             <div className="mcq-table-head">
               <button className="table-check" onClick={togglePageSelection} type="button" title="Select all visible questions">{rows.length > 0 && rows.every((row) => selectedQuestionIds.includes(row.id)) ? <CheckSquare2 size={17} /> : <Square size={17} />}</button>
-              <span>Question</span><span>Topics</span><span>Mark</span><span>Status</span>
+              <span>Question</span><span>Topic</span><span>Mark</span><span>Status</span>
             </div>
             {rows.length ? rows.map((row) => (
               <div className={`mcq-table-row ${selected?.id === row.id ? "active" : ""}`} key={row.id} onClick={() => setSelectedId(row.id)} role="button" tabIndex={0}>
                 <button className="table-check" onClick={(event) => { event.stopPropagation(); toggleSelectedQuestion(row.id); }} type="button" title="Select question">{selectedQuestionIds.includes(row.id) ? <CheckSquare2 size={17} /> : <Square size={17} />}</button>
                 <span><strong>{row.title || `MCQ #${row.id}`}</strong><small>{row.exam_code || row.source || "Manual question"} {row.source_question_number ? `/ ${row.source_question_number}` : ""}</small></span>
-                <span className="chip-wrap" title={row.topics.map((item) => item.name).join(", ")}>
-                  {row.topics.slice(0, 2).map((item) => <em key={`topic-${item.id}`}>{item.name}</em>)}
-                  {row.topics.length > 2 ? <em>+{row.topics.length - 2}</em> : null}
+                <span className="mcq-inline-topic-cell" onClick={(event) => event.stopPropagation()}>
+                  <select
+                    disabled={savingRowId === row.id}
+                    value={row.topics[0]?.id ?? ""}
+                    onChange={(event) => updateRowTopic(row, event.target.value)}
+                    title={row.topics.map((item) => item.name).join(", ")}
+                  >
+                    <option value="">No topic</option>
+                    {(metadata?.topics ?? []).map((topic) => <option key={topic.id} value={topic.id}>{topic.name}</option>)}
+                  </select>
+                  {row.topics.length > 1 ? <small>+{row.topics.length - 1}</small> : null}
                 </span>
-                <span className="mcq-mark-cell">{row.marks}</span>
-                <span className="mcq-status-cell"><span className={`mini-status ${row.review_status === "needs_review" ? "warn" : row.review_status === "verified" || row.review_status === "ready" ? "ok" : ""}`}>{row.review_status_label}</span></span>
+                <span className="mcq-mark-cell" onClick={(event) => event.stopPropagation()}>
+                  <input
+                    disabled={savingRowId === row.id}
+                    min={0}
+                    type="number"
+                    value={row.marks}
+                    onChange={(event) => replaceRow({ ...row, marks: Number(event.target.value || 0) })}
+                    onBlur={(event) => quickUpdateQuestion(row.id, { marks: Number(event.target.value || 0) })}
+                  />
+                </span>
+                <span className="mcq-status-cell" onClick={(event) => event.stopPropagation()}>
+                  <select
+                    className={row.review_status === "needs_review" ? "warn" : row.review_status === "verified" || row.review_status === "ready" ? "ok" : ""}
+                    disabled={savingRowId === row.id}
+                    value={row.review_status}
+                    onChange={(event) => quickUpdateQuestion(row.id, { review_status: event.target.value as MCQReviewStatus })}
+                  >
+                    {(metadata?.review_statuses ?? []).map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}
+                  </select>
+                </span>
               </div>
             )) : <div className="dashboard-empty">No MCQ questions match these filters.</div>}
           </div>
