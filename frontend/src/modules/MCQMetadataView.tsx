@@ -1,4 +1,4 @@
-import { Layers3, Plus, RefreshCw, Save, Tags, Trash2 } from "lucide-react";
+import { CheckCircle2, Layers3, Plus, RefreshCw, Save, Tags, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { API_BASE, readJson } from "../api";
@@ -7,18 +7,20 @@ import type { MCQMetadataPayload } from "../types";
 export function MCQMetadataView() {
   const [metadata, setMetadata] = useState<MCQMetadataPayload | null>(null);
   const [selectedTopicId, setSelectedTopicId] = useState<number | null>(null);
+  const [isCreatingTopic, setIsCreatingTopic] = useState(false);
   const [topicDraft, setTopicDraft] = useState({ name: "", description: "", color: "#14b8a6", is_active: true });
   const [subtopicName, setSubtopicName] = useState("");
   const [tagName, setTagName] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const selectedTopic = metadata?.topics.find((topic) => topic.id === selectedTopicId) ?? metadata?.topics[0] ?? null;
+  const selectedTopic = isCreatingTopic ? null : metadata?.topics.find((topic) => topic.id === selectedTopicId) ?? metadata?.topics[0] ?? null;
 
   useEffect(() => {
     loadMetadata();
   }, []);
 
   useEffect(() => {
+    if (isCreatingTopic) return;
     if (!selectedTopic) {
       setTopicDraft({ name: "", description: "", color: "#14b8a6", is_active: true });
       return;
@@ -30,7 +32,7 @@ export function MCQMetadataView() {
       color: selectedTopic.color || "#14b8a6",
       is_active: selectedTopic.is_active,
     });
-  }, [selectedTopic?.id]);
+  }, [isCreatingTopic, selectedTopic?.id]);
 
   async function loadMetadata() {
     setError(null);
@@ -45,55 +47,88 @@ export function MCQMetadataView() {
 
   async function saveTopic() {
     setMessage(null);
-    const response = await fetch(`${API_BASE}/api/mcq/metadata/topics/save/`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ id: selectedTopic?.id, ...topicDraft }),
-    });
-    await readJson(response);
-    setMessage("Topic saved.");
-    await loadMetadata();
+    setError(null);
+    if (!topicDraft.name.trim()) {
+      setError("Topic name is required.");
+      return;
+    }
+    try {
+      const response = await fetch(`${API_BASE}/api/mcq/metadata/topics/save/`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id: selectedTopic?.id, ...topicDraft }),
+      });
+      const saved = await readJson<{ id: number }>(response);
+      setSelectedTopicId(saved.id);
+      setIsCreatingTopic(false);
+      setMessage(isCreatingTopic ? "Topic created." : "Topic saved.");
+      await loadMetadata();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not save topic.");
+    }
   }
 
   async function createTopic() {
+    setIsCreatingTopic(true);
     setSelectedTopicId(null);
-    setTopicDraft({ name: "New topic", description: "", color: "#14b8a6", is_active: true });
+    setTopicDraft({ name: "", description: "", color: "#14b8a6", is_active: true });
+    setMessage(null);
+    setError(null);
   }
 
   async function deleteTopic() {
     if (!selectedTopic || !confirm(`Delete "${selectedTopic.name}"?`)) return;
     setMessage(null);
-    const response = await fetch(`${API_BASE}/api/mcq/metadata/topics/${selectedTopic.id}/delete/`, { method: "POST" });
-    await readJson(response);
-    setMessage("Topic deleted.");
-    setSelectedTopicId(null);
-    await loadMetadata();
+    setError(null);
+    try {
+      const response = await fetch(`${API_BASE}/api/mcq/metadata/topics/${selectedTopic.id}/delete/`, { method: "POST" });
+      await readJson(response);
+      setMessage("Topic deleted.");
+      setSelectedTopicId(null);
+      await loadMetadata();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not delete topic.");
+    }
   }
 
   async function addSubtopic() {
+    if (isCreatingTopic) {
+      setError("Save the new topic before adding subtopics.");
+      return;
+    }
     if (!selectedTopic || !subtopicName.trim()) return;
-    const response = await fetch(`${API_BASE}/api/mcq/metadata/subtopics/save/`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ topic_id: selectedTopic.id, name: subtopicName }),
-    });
-    await readJson(response);
-    setSubtopicName("");
-    setMessage("Subtopic added.");
-    await loadMetadata();
+    setError(null);
+    try {
+      const response = await fetch(`${API_BASE}/api/mcq/metadata/subtopics/save/`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ topic_id: selectedTopic.id, name: subtopicName }),
+      });
+      await readJson(response);
+      setSubtopicName("");
+      setMessage("Subtopic added.");
+      await loadMetadata();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not add subtopic.");
+    }
   }
 
   async function addTag() {
     if (!tagName.trim()) return;
-    const response = await fetch(`${API_BASE}/api/mcq/metadata/tags/save/`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ name: tagName }),
-    });
-    await readJson(response);
-    setTagName("");
-    setMessage("Tag saved.");
-    await loadMetadata();
+    setError(null);
+    try {
+      const response = await fetch(`${API_BASE}/api/mcq/metadata/tags/save/`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name: tagName }),
+      });
+      await readJson(response);
+      setTagName("");
+      setMessage("Tag saved.");
+      await loadMetadata();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not add tag.");
+    }
   }
 
   return (
@@ -117,7 +152,7 @@ export function MCQMetadataView() {
           <article><Layers3 size={18} /><span>Subtopics</span><strong>{metadata?.topics.reduce((sum, topic) => sum + topic.subtopics.length, 0) ?? 0}</strong></article>
         </div>
 
-        <div className="metadata-grid">
+        <div className="mcq-metadata-grid">
         <div className="dashboard-widget metadata-manager">
           <div className="dashboard-widget-head">
             <div><strong>Topics</strong><span>Reusable metadata for MCQ generation and future analytics.</span></div>
@@ -125,44 +160,57 @@ export function MCQMetadataView() {
           </div>
           <div className="metadata-list">
             {metadata?.topics.length ? metadata.topics.map((topic) => (
-              <button className={`metadata-topic-row ${selectedTopic?.id === topic.id ? "active" : ""}`} key={topic.id} onClick={() => setSelectedTopicId(topic.id)}>
+              <button className={`metadata-topic-row ${selectedTopic?.id === topic.id ? "active" : ""}`} key={topic.id} onClick={() => { setIsCreatingTopic(false); setSelectedTopicId(topic.id); }}>
                 <span className="topic-color-dot" style={{ background: topic.color || "#14b8a6" }} />
                 <span><strong>{topic.name}</strong><small>{topic.subtopics.length} subtopics</small></span>
                 <em>{topic.question_count} questions</em>
               </button>
-            )) : <div className="empty-state"><Tags size={30} /><strong>No MCQ topics yet</strong><span>Topics can be created here when the full metadata editor is implemented.</span></div>}
+            )) : <div className="empty-state"><Tags size={30} /><strong>No MCQ topics yet</strong><span>Create a topic to start organising MCQ questions.</span></div>}
           </div>
         </div>
 
         <div className="dashboard-widget metadata-detail">
-          <div className="dashboard-widget-head"><div><strong>Topic details</strong><span>Edit the selected topic without leaving the page.</span></div></div>
-          <label className="field-stack"><span>Topic name</span><input value={topicDraft.name} onChange={(event) => setTopicDraft((current) => ({ ...current, name: event.target.value }))} /></label>
+          <div className="dashboard-widget-head">
+            <div>
+              <strong>{isCreatingTopic ? "Create topic" : "Topic details"}</strong>
+              <span>{isCreatingTopic ? "Add a new topic for future filters and exam generation." : selectedTopic ? `Editing ${selectedTopic.name}` : "Select a topic to edit."}</span>
+            </div>
+            <span className={`metadata-state-pill ${topicDraft.is_active ? "active" : ""}`}>{topicDraft.is_active ? "Active" : "Archived"}</span>
+          </div>
+          <div className="metadata-editor-state">
+            {isCreatingTopic ? <Plus size={18} /> : <CheckCircle2 size={18} />}
+            <div>
+              <strong>{isCreatingTopic ? "Creating a new topic" : selectedTopic ? `Editing ${selectedTopic.name}` : "No topic selected"}</strong>
+              <span>{isCreatingTopic ? "This will become available in MCQ filters after saving." : selectedTopic ? `${selectedTopic.question_count} questions currently use this topic.` : "Choose a topic from the list or create one."}</span>
+            </div>
+          </div>
+          <label className="field-stack"><span>Topic name</span><input value={topicDraft.name} onChange={(event) => setTopicDraft((current) => ({ ...current, name: event.target.value }))} placeholder="e.g. Electricity" /></label>
           <label className="field-stack"><span>Description</span><textarea value={topicDraft.description} onChange={(event) => setTopicDraft((current) => ({ ...current, description: event.target.value }))} /></label>
           <div className="option-entry-grid">
             <label className="field-stack"><span>Colour</span><input type="color" value={topicDraft.color} onChange={(event) => setTopicDraft((current) => ({ ...current, color: event.target.value }))} /></label>
             <label className="field-stack"><span>Status</span><select value={topicDraft.is_active ? "active" : "archived"} onChange={(event) => setTopicDraft((current) => ({ ...current, is_active: event.target.value === "active" }))}><option value="active">Active</option><option value="archived">Archived</option></select></label>
           </div>
           <div className="builder-actions">
-            <button className="primary-action" onClick={saveTopic}><Save size={16} />Save topic</button>
-            <button className="secondary-action danger" disabled={!selectedTopic} onClick={deleteTopic}><Trash2 size={16} />Delete</button>
+            <button className="primary-action" disabled={!topicDraft.name.trim()} onClick={saveTopic}><Save size={16} />{isCreatingTopic ? "Create topic" : "Save topic"}</button>
+            <button className="secondary-action danger" disabled={!selectedTopic || isCreatingTopic} onClick={deleteTopic}><Trash2 size={16} />Delete</button>
           </div>
 
           <div className="metadata-subsection">
-            <strong>Subtopics</strong>
-            <div className="chip-wrap">{selectedTopic?.subtopics.map((subtopic) => <em key={subtopic.id}>{subtopic.name}</em>)}</div>
+            <div className="metadata-subsection-head"><strong>Subtopics</strong><span>{selectedTopic?.subtopics.length ?? 0}</span></div>
+            <div className="chip-wrap compact-chip-list">{selectedTopic?.subtopics.map((subtopic) => <em key={subtopic.id}>{subtopic.name}</em>)}</div>
             <div className="inline-add-row">
-              <input value={subtopicName} onChange={(event) => setSubtopicName(event.target.value)} placeholder="New subtopic" />
-              <button className="secondary-action" onClick={addSubtopic}>Add</button>
+              <input disabled={!selectedTopic || isCreatingTopic} value={subtopicName} onChange={(event) => setSubtopicName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") addSubtopic(); }} placeholder={selectedTopic && !isCreatingTopic ? "New subtopic" : "Save or select a topic first"} />
+              <button className="secondary-action" disabled={!selectedTopic || isCreatingTopic || !subtopicName.trim()} onClick={addSubtopic}>Add</button>
             </div>
           </div>
         </div>
 
         <div className="dashboard-widget metadata-tags">
           <div className="dashboard-widget-head"><div><strong>Tags</strong><span>Reusable labels such as graph, circuit, calculation, image-based.</span></div></div>
-          <div className="chip-wrap">{metadata?.tags.map((tag) => <em key={tag.id}>{tag.name}</em>)}</div>
+          <div className="chip-wrap compact-chip-list metadata-chip-cloud">{metadata?.tags.map((tag) => <em key={tag.id}>{tag.name}</em>)}</div>
           <div className="inline-add-row">
-            <input value={tagName} onChange={(event) => setTagName(event.target.value)} placeholder="New tag" />
-            <button className="secondary-action" onClick={addTag}>Add tag</button>
+            <input value={tagName} onChange={(event) => setTagName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") addTag(); }} placeholder="New tag" />
+            <button className="secondary-action" disabled={!tagName.trim()} onClick={addTag}>Add tag</button>
           </div>
         </div>
         </div>

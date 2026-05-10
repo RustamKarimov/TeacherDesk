@@ -262,8 +262,11 @@ export function MCQExamGeneratorView({
                       <span className="order-badge">{index + 1}</span>
                       <MultiPicker label="Topics" options={metadata?.topics ?? []} selectedIds={row.topicIds} onChange={(ids) => updateTopicRow(row.id, { topicIds: ids })} />
                       <MultiPicker label="Tags" options={metadata?.tags ?? []} selectedIds={row.tagIds} onChange={(ids) => updateTopicRow(row.id, { tagIds: ids })} />
-                      <label className="count-filter-field"><span>Needed</span><input min={1} max={available || 1} type="number" value={row.count} onChange={(event) => updateTopicRow(row.id, { count: Number(event.target.value) || 1 })} /></label>
-                      <span className="available-pill">{available} available</span>
+                      <label className={`count-filter-field ${available < row.count ? "warning" : ""}`}>
+                        <span>Needed</span>
+                        <input min={1} max={available || 1} type="number" value={row.count} onChange={(event) => updateTopicRow(row.id, { count: Number(event.target.value) || 1 })} />
+                        <em>{available} available</em>
+                      </label>
                       <button className="toolbar-icon-button danger-icon" disabled={topicRows.length === 1} onClick={() => setTopicRows((current) => current.filter((item) => item.id !== row.id))} title="Remove row"><Trash2 size={16} /></button>
                     </div>
                   );
