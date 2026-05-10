@@ -1,4 +1,4 @@
-import { AlignCenter, AlignLeft, AlignRight, AlignVerticalJustifyCenter, AlignVerticalJustifyEnd, AlignVerticalJustifyStart, Bold, Check, Heading2, Image, Italic, List, ListOrdered, Pi, Plus, Radical, Redo2, Save, Scaling, Sigma, SquarePi, StretchHorizontal, StretchVertical, Subscript, Superscript, Table2, Trash2, Underline, Undo2, UploadCloud } from "lucide-react";
+import { AlignCenter, AlignLeft, AlignRight, AlignVerticalJustifyCenter, AlignVerticalJustifyEnd, AlignVerticalJustifyStart, Bold, Check, Heading2, Image, Italic, List, ListOrdered, Plus, Redo2, Save, Scaling, Sigma, SquarePi, StretchHorizontal, StretchVertical, Table2, Trash2, Underline, Undo2, UploadCloud } from "lucide-react";
 import { EditorContent, type JSONContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import TiptapImage from "@tiptap/extension-image";
@@ -150,39 +150,38 @@ const RichImage = TiptapImage.extend({
   },
 });
 
-function FractionShortcutIcon() {
-  return <span className="math-shortcut-icon fraction-icon" aria-hidden="true"><i>a</i><b /><i>b</i></span>;
-}
-
-function VectorShortcutIcon() {
-  return <span className="math-shortcut-icon vector-icon" aria-hidden="true"><i>v</i></span>;
-}
-
-function GreekShortcutIcon({ symbol }: { symbol: string }) {
-  return <span className="math-shortcut-icon greek-icon" aria-hidden="true">{symbol}</span>;
-}
-
-function IntegralShortcutIcon() {
-  return <span className="math-shortcut-icon integral-icon" aria-hidden="true">∫</span>;
-}
-
-function LimitShortcutIcon() {
-  return <span className="math-shortcut-icon limit-icon" aria-hidden="true">lim</span>;
+function MathShortcutIcon({ variant }: { variant: "fraction" | "power" | "subscript" | "root" | "vector" | "theta" | "delta" | "pi" | "sum" | "integral" | "limit" | "matrix" }) {
+  return (
+    <svg className="math-shortcut-icon" viewBox="0 0 24 24" aria-hidden="true">
+      {variant === "fraction" ? <><path d="M6 12h12" /><circle cx="10" cy="7" r="1.6" /><circle cx="14" cy="17" r="1.6" /></> : null}
+      {variant === "power" ? <><path d="M6 17l7-10" /><path d="M15 7h3v3" /></> : null}
+      {variant === "subscript" ? <><path d="M6 8l8 8M14 8l-8 8" /><path d="M16 17h3v2h-3z" /></> : null}
+      {variant === "root" ? <path d="M4 13h4l2 5 4-12h6" /> : null}
+      {variant === "vector" ? <><path d="M5 15h12" /><path d="M13 11l4 4-4 4" /><path d="M8 9h8" /></> : null}
+      {variant === "theta" ? <><ellipse cx="12" cy="12" rx="6" ry="8" /><path d="M6 12h12" /></> : null}
+      {variant === "delta" ? <path d="M12 5l7 14H5L12 5z" /> : null}
+      {variant === "pi" ? <><path d="M5 7h14" /><path d="M8 7v12" /><path d="M16 7v12" /></> : null}
+      {variant === "sum" ? <path d="M18 5H7l6 7-6 7h11" /> : null}
+      {variant === "integral" ? <path d="M15 4c-3 0-3 4-3 8s0 8-3 8" /> : null}
+      {variant === "limit" ? <><path d="M4 16h16" /><path d="M8 16v-8" /><path d="M8 8h4" /><path d="M16 16v-5" /><circle cx="16" cy="8" r="1" /></> : null}
+      {variant === "matrix" ? <><path d="M6 5v14M18 5v14" /><path d="M9 8h2M13 8h2M9 12h2M13 12h2M9 16h2M13 16h2" /></> : null}
+    </svg>
+  );
 }
 
 const equationSnippets: Array<{ icon: ReactNode; value: string; title: string }> = [
-  { icon: <FractionShortcutIcon />, value: "\\frac{a}{b}", title: "Fraction" },
-  { icon: <Superscript size={17} />, value: "x^{2}", title: "Power" },
-  { icon: <Subscript size={17} />, value: "x_{n}", title: "Subscript" },
-  { icon: <Radical size={17} />, value: "\\sqrt{x}", title: "Square root" },
-  { icon: <VectorShortcutIcon />, value: "\\vec{v}", title: "Vector" },
-  { icon: <GreekShortcutIcon symbol="θ" />, value: "\\theta", title: "Theta" },
-  { icon: <GreekShortcutIcon symbol="Δ" />, value: "\\Delta", title: "Delta" },
-  { icon: <Pi size={17} />, value: "\\pi", title: "Pi" },
-  { icon: <Sigma size={17} />, value: "\\sum_{i=1}^{n}", title: "Summation" },
-  { icon: <IntegralShortcutIcon />, value: "\\int_{a}^{b}", title: "Integral" },
-  { icon: <LimitShortcutIcon />, value: "\\lim_{x\\to 0}", title: "Limit" },
-  { icon: <Table2 size={17} />, value: "\\begin{bmatrix} a & b \\\\ c & d \\end{bmatrix}", title: "Matrix" },
+  { icon: <MathShortcutIcon variant="fraction" />, value: "\\frac{a}{b}", title: "Fraction" },
+  { icon: <MathShortcutIcon variant="power" />, value: "x^{2}", title: "Power" },
+  { icon: <MathShortcutIcon variant="subscript" />, value: "x_{n}", title: "Subscript" },
+  { icon: <MathShortcutIcon variant="root" />, value: "\\sqrt{x}", title: "Square root" },
+  { icon: <MathShortcutIcon variant="vector" />, value: "\\vec{v}", title: "Vector" },
+  { icon: <MathShortcutIcon variant="theta" />, value: "\\theta", title: "Theta" },
+  { icon: <MathShortcutIcon variant="delta" />, value: "\\Delta", title: "Delta" },
+  { icon: <MathShortcutIcon variant="pi" />, value: "\\pi", title: "Pi" },
+  { icon: <MathShortcutIcon variant="sum" />, value: "\\sum_{i=1}^{n}", title: "Summation" },
+  { icon: <MathShortcutIcon variant="integral" />, value: "\\int_{a}^{b}", title: "Integral" },
+  { icon: <MathShortcutIcon variant="limit" />, value: "\\lim_{x\\to 0}", title: "Limit" },
+  { icon: <MathShortcutIcon variant="matrix" />, value: "\\begin{bmatrix} a & b \\\\ c & d \\end{bmatrix}", title: "Matrix" },
 ];
 
 function clipboardImageFile(event: { clipboardData: DataTransfer | null }): File | null {

@@ -1,4 +1,4 @@
-import { BookOpen, Database, FileQuestion, FolderOpen, Settings, Shuffle, Tags } from "lucide-react";
+import { AlertTriangle, BookOpen, BookOpenCheck, CheckCircle2, Database, FolderOpen, Settings, Shuffle, Tags, WifiOff } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { API_BASE, readJson } from "../api";
@@ -104,7 +104,7 @@ export function DashboardView({ onOpenModule }: { onOpenModule: (module: Dashboa
                 action="Open Settings"
               />
               <ModuleStatusCard
-                icon={FileQuestion}
+                icon={BookOpenCheck}
                 title="MCQ Bank"
                 subtitle="Multiple-choice questions"
                 badge={mcqDashboard ? "Ready" : "Offline"}
@@ -237,7 +237,7 @@ function ModuleStatusCard({
     <button className={`module-status-card ${tone}`} onClick={onOpen}>
       <div className="module-card-head">
         <div><Icon size={17} /><strong>{title}</strong></div>
-        {badge ? <span>{badge}</span> : null}
+        {badge ? <StatusBadge label={badge} tone={tone} /> : null}
       </div>
       <small>{subtitle}</small>
       <div className="module-card-stats">
@@ -251,6 +251,15 @@ function ModuleStatusCard({
       </div>
       <em>{action}</em>
     </button>
+  );
+}
+
+function StatusBadge({ label, tone }: { label: string; tone: "default" | "warning" | "success" }) {
+  const Icon = label === "Offline" ? WifiOff : tone === "warning" ? AlertTriangle : CheckCircle2;
+  return (
+    <span className="module-status-icon" title={label} aria-label={label}>
+      <Icon size={15} />
+    </span>
   );
 }
 
