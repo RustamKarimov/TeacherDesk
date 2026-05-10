@@ -4854,7 +4854,7 @@ td,
 .multi-filter-trigger span {
   color: var(--muted, #6b778c);
   font-size: 11px;
-  font-weight: 850;
+  font-weight: 760;
   text-transform: uppercase;
 }
 
@@ -4863,7 +4863,7 @@ td,
   overflow: hidden;
   color: var(--text, #172033);
   font-size: 14px;
-  font-weight: 850;
+  font-weight: 720;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -5014,6 +5014,7 @@ td,
   flex-wrap: wrap;
   align-items: baseline;
   gap: 6px;
+  font-weight: 760;
 }
 
 .library-title strong span {
@@ -5044,7 +5045,7 @@ td,
   align-items: center;
   gap: 5px;
   color: var(--muted, #6b778c);
-  font-weight: 750;
+  font-weight: 700;
 }
 
 .toolbar-icon-button {
@@ -5098,8 +5099,8 @@ td,
 .mcq-table-head,
 .mcq-table-row {
   display: grid;
-  grid-template-columns: 32px minmax(210px, 1.35fr) minmax(170px, 0.95fr) 82px 150px;
-  gap: 12px;
+  grid-template-columns: 32px minmax(210px, 1.02fr) minmax(178px, 0.86fr) 78px minmax(164px, 0.78fr);
+  gap: 10px;
   align-items: center;
 }
 
@@ -5108,7 +5109,7 @@ td,
   background: var(--panel-bg-soft, #f8fafc);
   color: var(--muted, #6b778c);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 740;
   text-transform: uppercase;
 }
 
@@ -5126,7 +5127,7 @@ td,
 
 .mcq-mark-cell {
   color: var(--text, #172033);
-  font-weight: 850;
+  font-weight: 700;
 }
 
 .mcq-status-cell {
@@ -5145,29 +5146,41 @@ td,
 .mcq-status-cell select,
 .mcq-mark-cell input {
   width: 100%;
-  min-height: 34px;
+  min-height: 38px;
   border: 1px solid var(--border-soft, var(--line, #d8e1eb));
-  border-radius: 8px;
-  background: var(--field-bg, var(--input-bg, #ffffff));
+  border-radius: 9px;
+  background-color: var(--field-bg, var(--input-bg, #ffffff));
   color: var(--text-main, var(--text, #172033));
   font: inherit;
   font-size: 13px;
-  font-weight: 700;
-  padding: 0 8px;
+  font-weight: 650;
+  padding: 0 10px;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #ffffff 5%, transparent);
+  transition: border-color 0.15s ease, background-color 0.15s ease, color 0.15s ease;
 }
 
 .mcq-inline-topic-cell select,
 .mcq-status-cell select {
   appearance: none;
-  padding-right: 24px;
+  padding-right: 30px;
   background-image:
     linear-gradient(45deg, transparent 50%, currentColor 50%),
     linear-gradient(135deg, currentColor 50%, transparent 50%);
   background-position:
-    calc(100% - 14px) 50%,
-    calc(100% - 9px) 50%;
+    calc(100% - 17px) 50%,
+    calc(100% - 12px) 50%;
   background-size: 5px 5px, 5px 5px;
   background-repeat: no-repeat;
+}
+
+.mcq-inline-topic-cell select:hover,
+.mcq-status-cell select:hover,
+.mcq-mark-cell input:hover,
+.mcq-inline-topic-cell select:focus,
+.mcq-status-cell select:focus,
+.mcq-mark-cell input:focus {
+  border-color: var(--primary, #14b8a6);
+  outline: 0;
 }
 
 .mcq-inline-topic-cell small {
@@ -5179,7 +5192,7 @@ td,
 }
 
 .mcq-mark-cell input {
-  max-width: 64px;
+  max-width: 72px;
   text-align: center;
 }
 
@@ -5218,6 +5231,10 @@ td,
   display: block;
   color: var(--muted, #6b778c);
   font-style: normal;
+}
+
+.mcq-table-row strong {
+  font-weight: 760;
 }
 
 .chip-wrap {
