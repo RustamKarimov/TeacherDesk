@@ -1423,28 +1423,46 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
               <div className="option-layout-card-grid compact-option-layouts">{optionLayoutVisuals.map((item) => <button className={`option-layout-card ${optionLayout === item.value ? "active" : ""}`} key={item.value} onClick={() => { setOptionLayout(item.value); setLayoutPreset(item.value === "table" ? "table_options" : item.value === "grid" ? "option_grid" : "standard"); }} type="button"><span className={`option-layout-thumbnail ${item.className}`}><i /><i /><i /><i /></span><strong>{item.title}</strong><small>{item.subtitle}</small></button>)}</div>
               {optionLayout !== "table" ? (
                 <div className="option-control-panel">
-                  <div className="option-control-group">
-                    <strong>Option layout controls</strong>
-                    <div className="option-image-toolbar" aria-label="Option image layout controls">
-                      <button className={optionLabelPlacement === "inline" ? "active" : ""} type="button" onClick={() => setOptionLabelPlacement("inline")} title="Show option letters inline" aria-label="Show option letters inline">A.</button>
-                      <button className={optionLabelPlacement === "above" ? "active" : ""} type="button" onClick={() => setOptionLabelPlacement("above")} title="Show option letters above the content" aria-label="Show option letters above the content">A</button>
-                      <span className="option-image-toolbar-divider" aria-hidden="true" />
-                      <button className={optionLabelAlign === "left" ? "active" : ""} type="button" onClick={() => setOptionLabelAlign("left")} title="Align option letters left" aria-label="Align option letters left"><AlignLeft size={17} /></button>
-                      <button className={optionLabelAlign === "center" ? "active" : ""} type="button" onClick={() => setOptionLabelAlign("center")} title="Center option letters" aria-label="Center option letters"><AlignCenter size={17} /></button>
-                      <button className={optionLabelAlign === "right" ? "active" : ""} type="button" onClick={() => setOptionLabelAlign("right")} title="Align option letters right" aria-label="Align option letters right"><AlignRight size={17} /></button>
-                      <span className="option-image-toolbar-divider" aria-hidden="true" />
-                      <button className={optionContentAlign === "left" ? "active" : ""} type="button" onClick={() => setOptionContentAlign("left")} title="Align option content left" aria-label="Align option content left"><AlignLeft size={17} /></button>
-                      <button className={optionContentAlign === "center" ? "active" : ""} type="button" onClick={() => setOptionContentAlign("center")} title="Center option content" aria-label="Center option content"><AlignCenter size={17} /></button>
-                      <button className={optionContentAlign === "right" ? "active" : ""} type="button" onClick={() => setOptionContentAlign("right")} title="Align option content right" aria-label="Align option content right"><AlignRight size={17} /></button>
-                      <span className="option-image-toolbar-divider" aria-hidden="true" />
-                      <button className={optionImagePlacement === "top" ? "active" : ""} type="button" onClick={() => setOptionImagePlacement("top")} title="Place option images above text" aria-label="Place option images above text"><AlignVerticalJustifyStart size={17} /></button>
-                      <button className={optionImagePlacement === "middle" ? "active" : ""} type="button" onClick={() => setOptionImagePlacement("middle")} title="Place option images beside text" aria-label="Place option images beside text"><AlignVerticalJustifyCenter size={17} /></button>
-                      <button className={optionImagePlacement === "bottom" ? "active" : ""} type="button" onClick={() => setOptionImagePlacement("bottom")} title="Place option images below text" aria-label="Place option images below text"><AlignVerticalJustifyEnd size={17} /></button>
-                      <span className="option-image-toolbar-divider" aria-hidden="true" />
-                      <button className={optionImageSizing === "individual" ? "active" : ""} type="button" onClick={() => setOptionImageSizing("individual")} title="Keep each option image at its own size" aria-label="Keep each option image at its own size"><Image size={17} /></button>
-                      <button className={optionImageSizing === "same_height" ? "active" : ""} type="button" onClick={() => setOptionImageSizing("same_height")} title="Make option images the same height" aria-label="Make option images the same height"><StretchVertical size={17} /></button>
-                      <button className={optionImageSizing === "same_width" ? "active" : ""} type="button" onClick={() => setOptionImageSizing("same_width")} title="Make option images the same width" aria-label="Make option images the same width"><StretchHorizontal size={17} /></button>
-                      <button className={optionImageSizing === "same_size" ? "active" : ""} type="button" onClick={() => setOptionImageSizing("same_size")} title="Make option images similar size" aria-label="Make option images similar size"><Scaling size={17} /></button>
+                  <div className="option-control-grid">
+                    <div className="option-control-group">
+                      <strong>Letters</strong>
+                      <span>Placement and alignment of A-D only.</span>
+                      <div className="option-image-toolbar compact" aria-label="Option letter controls">
+                        <button className={optionLabelPlacement === "inline" ? "active" : ""} type="button" onClick={() => setOptionLabelPlacement("inline")} title="Letters beside answers" aria-label="Letters beside answers">A.</button>
+                        <button className={optionLabelPlacement === "above" ? "active" : ""} type="button" onClick={() => setOptionLabelPlacement("above")} title="Letters above answers" aria-label="Letters above answers">A</button>
+                        <span className="option-image-toolbar-divider" aria-hidden="true" />
+                        <button className={optionLabelAlign === "left" ? "active" : ""} type="button" onClick={() => setOptionLabelAlign("left")} title="Align letters left" aria-label="Align letters left"><AlignLeft size={16} /></button>
+                        <button className={optionLabelAlign === "center" ? "active" : ""} type="button" onClick={() => setOptionLabelAlign("center")} title="Center letters" aria-label="Center letters"><AlignCenter size={16} /></button>
+                        <button className={optionLabelAlign === "right" ? "active" : ""} type="button" onClick={() => setOptionLabelAlign("right")} title="Align letters right" aria-label="Align letters right"><AlignRight size={16} /></button>
+                      </div>
+                    </div>
+                    <div className="option-control-group">
+                      <strong>Answer content</strong>
+                      <span>Align text and images inside each option.</span>
+                      <div className="option-image-toolbar compact" aria-label="Option content controls">
+                        <button className={optionContentAlign === "left" ? "active" : ""} type="button" onClick={() => setOptionContentAlign("left")} title="Align content left" aria-label="Align content left"><AlignLeft size={16} /></button>
+                        <button className={optionContentAlign === "center" ? "active" : ""} type="button" onClick={() => setOptionContentAlign("center")} title="Center content" aria-label="Center content"><AlignCenter size={16} /></button>
+                        <button className={optionContentAlign === "right" ? "active" : ""} type="button" onClick={() => setOptionContentAlign("right")} title="Align content right" aria-label="Align content right"><AlignRight size={16} /></button>
+                      </div>
+                    </div>
+                    <div className="option-control-group">
+                      <strong>Image position</strong>
+                      <span>Where image blocks sit relative to option text.</span>
+                      <div className="option-image-toolbar compact" aria-label="Option image placement controls">
+                        <button className={optionImagePlacement === "top" ? "active" : ""} type="button" onClick={() => setOptionImagePlacement("top")} title="Images above text" aria-label="Images above text"><AlignVerticalJustifyStart size={16} /></button>
+                        <button className={optionImagePlacement === "middle" ? "active" : ""} type="button" onClick={() => setOptionImagePlacement("middle")} title="Images beside text" aria-label="Images beside text"><AlignVerticalJustifyCenter size={16} /></button>
+                        <button className={optionImagePlacement === "bottom" ? "active" : ""} type="button" onClick={() => setOptionImagePlacement("bottom")} title="Images below text" aria-label="Images below text"><AlignVerticalJustifyEnd size={16} /></button>
+                      </div>
+                    </div>
+                    <div className="option-control-group">
+                      <strong>Image sizing</strong>
+                      <span>Keep individual sizes or normalise option images.</span>
+                      <div className="option-image-toolbar compact" aria-label="Option image sizing controls">
+                        <button className={optionImageSizing === "individual" ? "active" : ""} type="button" onClick={() => setOptionImageSizing("individual")} title="Individual image sizes" aria-label="Individual image sizes"><Image size={16} /></button>
+                        <button className={optionImageSizing === "same_height" ? "active" : ""} type="button" onClick={() => setOptionImageSizing("same_height")} title="Same image height" aria-label="Same image height"><StretchVertical size={16} /></button>
+                        <button className={optionImageSizing === "same_width" ? "active" : ""} type="button" onClick={() => setOptionImageSizing("same_width")} title="Same image width" aria-label="Same image width"><StretchHorizontal size={16} /></button>
+                        <button className={optionImageSizing === "same_size" ? "active" : ""} type="button" onClick={() => setOptionImageSizing("same_size")} title="Similar image size" aria-label="Similar image size"><Scaling size={16} /></button>
+                      </div>
                     </div>
                   </div>
                   <div className="option-control-group">

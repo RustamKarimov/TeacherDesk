@@ -6940,8 +6940,9 @@ td,
 }
 
 .compact-option-layouts {
-  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(124px, 1fr));
   gap: 8px;
+  min-width: 0;
 }
 
 .compact-option-layouts .option-layout-card {
@@ -7467,16 +7468,31 @@ td,
 
 .option-control-panel {
   display: grid;
-  gap: 8px;
+  gap: 12px;
   border: 1px solid var(--border-soft, var(--line, #d8e1eb));
   border-radius: 10px;
   background: var(--panel-bg, #ffffff);
-  padding: 10px;
+  padding: 12px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.option-control-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(185px, 1fr));
+  gap: 10px;
+  min-width: 0;
 }
 
 .option-control-group {
   display: grid;
   gap: 8px;
+  align-content: start;
+  min-width: 0;
+  border: 1px solid var(--line, #d8e1eb);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--panel-bg-soft, #f8fafc) 88%, transparent);
+  padding: 10px;
 }
 
 .option-control-group > strong {
@@ -7484,16 +7500,32 @@ td,
   font-size: 13px;
 }
 
+.option-control-group > span {
+  color: var(--text-soft, #64748b);
+  font-size: 11px;
+  line-height: 1.25;
+  margin-top: -4px;
+}
+
 .option-image-toolbar {
   display: flex;
   align-items: center;
   gap: 8px;
-  width: fit-content;
+  width: 100%;
   max-width: 100%;
   border: 1px solid var(--line, #d8e1eb);
   border-radius: 12px;
   background: var(--panel-bg-soft, #f8fafc);
   padding: 9px;
+  flex-wrap: wrap;
+  overflow: hidden;
+}
+
+.option-image-toolbar.compact {
+  gap: 5px;
+  padding: 6px;
+  border-radius: 10px;
+  background: var(--input-bg, #ffffff);
 }
 
 .option-image-toolbar.dense {
@@ -7515,6 +7547,15 @@ td,
   color: var(--muted, #6b778c);
   cursor: pointer;
   transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.15s ease;
+}
+
+.option-image-toolbar.compact button {
+  width: 34px;
+  min-width: 34px;
+  height: 32px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 850;
 }
 
 .option-image-toolbar.dense button {
