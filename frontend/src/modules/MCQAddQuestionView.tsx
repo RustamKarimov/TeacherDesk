@@ -1,4 +1,4 @@
-import { AlignCenter, AlignLeft, AlignRight, AlignVerticalJustifyCenter, AlignVerticalJustifyEnd, AlignVerticalJustifyStart, Bold, Check, Heading2, Image, Italic, List, ListOrdered, Plus, Redo2, Save, Scaling, Sigma, SquarePi, StretchHorizontal, StretchVertical, Table2, Trash2, Underline, Undo2, UploadCloud } from "lucide-react";
+import { AlignCenter, AlignLeft, AlignRight, AlignVerticalJustifyCenter, AlignVerticalJustifyEnd, AlignVerticalJustifyStart, Bold, Check, Heading2, Image, Italic, List, ListOrdered, Plus, Redo2, Save, Scaling, StretchHorizontal, StretchVertical, Table2, Trash2, Underline, Undo2, UploadCloud } from "lucide-react";
 import { EditorContent, type JSONContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import TiptapImage from "@tiptap/extension-image";
@@ -18,7 +18,7 @@ import { API_BASE, readJson } from "../api";
 import type { MCQAsset, MCQAssetListPayload, MCQMetadataPayload, MCQReviewStatus } from "../types";
 
 type EditorStep = "question" | "options" | "metadata";
-type ContentBlockType = "text" | "image" | "equation" | "table" | "note";
+type ContentBlockType = "text" | "image" | "table" | "note";
 type ContentBlockDraft = { id: string; block_type: ContentBlockType; text: string; assetId: number | null; tableText: string };
 type OptionDraft = {
   label: string;
@@ -468,7 +468,6 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
     const content = sourceBlocks.filter(blockHasContent).flatMap((block): JSONContent[] => {
       const asset = block.assetId ? assets.find((item) => item.id === block.assetId) : null;
       if (block.block_type === "image" && asset) return [{ type: "image", attrs: { src: `${API_BASE}${asset.preview_url}`, alt: asset.original_name } }];
-      if (block.block_type === "equation") return [{ type: "paragraph", content: [{ type: "text", text: `$$${block.text}$$` }] }];
       if (block.block_type === "table") {
         const rows = tableRowsFromText(block.tableText);
         return rows.length
@@ -1154,7 +1153,6 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
   function renderBlock(block: ContentBlockDraft) {
     const asset = assets.find((item) => item.id === block.assetId);
     if (block.block_type === "image") return asset ? <img className="a4-question-image" src={`${API_BASE}${asset.preview_url}`} alt={asset.original_name} /> : <p className="muted-preview">Image block</p>;
-    if (block.block_type === "equation") return <LatexMath latex={block.text || "F = ma"} displayMode />;
     if (block.block_type === "table") {
       const rows = tableRowsFromText(block.tableText);
       return rows.length ? <table className="mcq-preview-table"><tbody>{rows.map((row, rowIndex) => <tr key={rowIndex}>{row.map((cell, cellIndex) => <td key={cellIndex}>{renderMathText(cell)}</td>)}</tr>)}</tbody></table> : <p className="muted-preview">Table block</p>;
@@ -1358,11 +1356,6 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
                     <button className={selectedImageFit === "cover" ? "active" : ""} type="button" disabled={!selectedImageWidth} onClick={() => setEditorImageFit("cover")}>Crop</button>
                   </div>
                 </div>
-                <div className="rich-equation-palette">
-                  <span title="Inline equation shortcuts"><Sigma size={15} /></span>
-                  {equationSnippets.map((snippet) => <button key={snippet.title} type="button" title={snippet.title} aria-label={snippet.title} onClick={() => insertEditorMath(snippet.value)}>{snippet.icon}</button>)}
-                  <button type="button" title="Block equation" aria-label="Block equation" onClick={() => insertEditorMath("\\frac{mv^2}{r}", true)}><SquarePi size={17} /></button>
-                </div>
                 <div className="a4-editor-stage" ref={editorScaleRef}>
                   <div className="a4-scale-shell" style={{ "--a4-scale": editorScale } as CSSProperties}>
                     <div className="a4-editor-page">
@@ -1454,9 +1447,6 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
                 <div className={`option-editor-card ${correctOption === option.label ? "correct" : ""}`} key={option.label}>
                   <div className="option-card-head"><button className="option-letter" onClick={() => setCorrectOption(option.label)} title="Mark as correct">{option.label}</button><div><strong>{correctOption === option.label ? "Correct answer" : "Answer option"}</strong><span>Text, equation, image, or a combination.</span></div><button className="icon-button" disabled={options.length <= 2} onClick={() => removeOption(index)}><Trash2 size={15} /></button></div>
                   <textarea value={option.text} onPaste={(event) => handleOptionPaste(event, index)} onChange={(event) => updateOption(index, { text: event.target.value })} placeholder={`Type option ${option.label}. Use $\\frac{1}{2}mv^2$ for inline maths. Paste an image here to attach it.`} />
-                  <div className="option-equation-panel compact">
-                    <div className="option-equation-tools"><span><Sigma size={14} /></span>{equationSnippets.slice(0, 8).map((snippet) => <button key={snippet.title} type="button" title={snippet.title} aria-label={snippet.title} onClick={() => insertIntoOptionText(index, snippet.value)}>{snippet.icon}</button>)}</div>
-                  </div>
                   <div className="option-asset-row"><label className="compact-upload-button"><UploadCloud size={15} />Upload image<input type="file" accept="image/*" disabled={isUploadingAsset} onChange={(event) => uploadAsset(event.target.files?.[0] ?? null, "option", (asset) => updateOption(index, { assetId: asset.id }))} /></label><select className="styled-select" value={option.assetId ?? ""} onChange={(event) => updateOption(index, { assetId: event.target.value ? Number(event.target.value) : null })}><option value="">No option image</option>{assets.map((asset) => <option value={asset.id} key={asset.id}>{asset.original_name}</option>)}</select>{option.assetId ? <button className="secondary-action" type="button" onClick={() => updateOption(index, { assetId: null })}>Remove</button> : null}</div>
                   {option.assetId ? (
                     <div className="option-image-tools extended">

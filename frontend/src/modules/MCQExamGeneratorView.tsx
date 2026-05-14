@@ -13,6 +13,10 @@ type GeneratedPayload = {
   variants: Array<{ variant: number; student_pdf: string; teacher_pdf: string; answer_key_pdf: string }>;
   warnings: Array<{ message: string; row?: number; requested?: number; available?: number }>;
 };
+type HeaderFooterDraft = {
+  header: { left: string; center: string; right: string };
+  footer: { left: string; center: string; right: string };
+};
 
 function shuffleRows(rows: MCQQuestionRow[]) {
   const copy = [...rows];
@@ -119,6 +123,11 @@ export function MCQExamGeneratorView({
   const [shuffleOptions, setShuffleOptions] = useState(false);
   const [variants, setVariants] = useState(1);
   const [generated, setGenerated] = useState<GeneratedPayload | null>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [headerFooter, setHeaderFooter] = useState<HeaderFooterDraft>({
+    header: { left: "", center: "{title}", right: "" },
+    footer: { left: "{date}", center: "Page {page} of {pages}", right: "Variant {variant}" },
+  });
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -186,7 +195,8 @@ export function MCQExamGeneratorView({
 
   async function generatePdfs() {
     setError(null);
-    setNotice(null);
+    setNotice("Preparing MCQ PDFs. Images, tables, answer keys, and variants are being rendered...");
+    setIsGenerating(true);
     const payload = {
       title,
       mode,
@@ -199,6 +209,7 @@ export function MCQExamGeneratorView({
       shuffle_questions: shuffleQuestions,
       shuffle_options: shuffleOptions,
       variants,
+      header_footer: headerFooter,
     };
     try {
       const response = await fetch(`${API_BASE}/api/mcq/exams/generate/`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
@@ -207,7 +218,28 @@ export function MCQExamGeneratorView({
       setNotice(`Generated ${result.variants.length} variant${result.variants.length === 1 ? "" : "s"} in ${result.output_folder}.`);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not generate MCQ PDFs.");
+    } finally {
+      setIsGenerating(false);
     }
+  }
+
+  async function openOutputFolder() {
+    if (!generated?.output_folder) return;
+    setError(null);
+    try {
+      const response = await fetch(`${API_BASE}/api/mcq/exams/open-folder/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ folder: generated.output_folder }),
+      });
+      await readJson(response);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not open generated exam folder.");
+    }
+  }
+
+  function updateHeaderFooter(area: "header" | "footer", position: "left" | "center" | "right", value: string) {
+    setHeaderFooter((current) => ({ ...current, [area]: { ...current[area], [position]: value } }));
   }
 
   return (
@@ -280,6 +312,21 @@ export function MCQExamGeneratorView({
                 <button className="secondary-action compact-action" onClick={onOpenQuestionBank}><FolderOpen size={15} />Update selection in Question Bank</button>
               </div>
             ) : null}
+
+            <div className="header-footer-panel">
+              <div className="section-intro compact"><strong>Header and footer</strong><span>Use tokens: {"{title}"}, {"{page}"}, {"{pages}"}, {"{date}"}, {"{variant}"}, {"{mode}"}.</span></div>
+              {(["header", "footer"] as const).map((area) => (
+                <div className="header-footer-row" key={area}>
+                  <strong>{area === "header" ? "Header" : "Footer"}</strong>
+                  {(["left", "center", "right"] as const).map((position) => (
+                    <label className="field-stack compact-field" key={`${area}-${position}`}>
+                      <span>{position}</span>
+                      <input value={headerFooter[area][position]} onChange={(event) => updateHeaderFooter(area, position, event.target.value)} placeholder={`${area} ${position}`} />
+                    </label>
+                  ))}
+                </div>
+              ))}
+            </div>
           </div>
 
           <div className="mcq-generator-card">
@@ -306,8 +353,9 @@ export function MCQExamGeneratorView({
             <div><strong>Output</strong><span>PDF generation creates every variant, answer key, and teacher copy in one folder.</span></div>
           </div>
           <div className="output-action-stack">
-            <button className="primary-action" disabled={!selectedQuestions.length && mode === "manual"} onClick={generatePdfs}><FileText size={17} />Generate PDFs</button>
+            <button className="primary-action" disabled={isGenerating || (!selectedQuestions.length && mode === "manual")} onClick={generatePdfs}><FileText size={17} />{isGenerating ? "Generating PDFs..." : "Generate PDFs"}</button>
             <button className="secondary-action" disabled><KeyRound size={17} />Answer key is automatic</button>
+            <button className="secondary-action" disabled={!generated?.output_folder || isGenerating} onClick={openOutputFolder}><FolderOpen size={17} />Open output folder</button>
           </div>
           <div className="folder-table compact">
             <div className="folder-table-row"><strong>Mode</strong><span>{mode === "full_paper" ? "Full paper" : mode === "topic" ? "Topic based" : "Manual basket"}</span><small className="ok">Ready</small></div>

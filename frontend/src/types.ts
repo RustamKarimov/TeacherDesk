@@ -280,7 +280,7 @@ export type MCQMetadataPayload = {
     question_count: number;
     subtopics: Array<{ id: number; uuid: string; name: string; topic_id?: number; topic_name?: string; question_count?: number }>;
   }>;
-  tags: Array<{ id: number; uuid?: string; name: string }>;
+  tags: Array<{ id: number; uuid?: string; name: string; question_count?: number }>;
   difficulties: string[];
   review_statuses: Array<{ value: MCQReviewStatus; label: string }>;
   layout_presets: Array<{ value: string; label: string }>;

@@ -207,7 +207,13 @@ export function MCQMetadataView() {
 
         <div className="dashboard-widget metadata-tags">
           <div className="dashboard-widget-head"><div><strong>Tags</strong><span>Reusable labels such as graph, circuit, calculation, image-based.</span></div></div>
-          <div className="chip-wrap compact-chip-list metadata-chip-cloud">{metadata?.tags.map((tag) => <em key={tag.id}>{tag.name}</em>)}</div>
+          <div className="chip-wrap compact-chip-list metadata-chip-cloud scrollable-chip-cloud">
+            {metadata?.tags.map((tag) => (
+              <em key={tag.id} title={`${tag.name} is used by ${tag.question_count ?? 0} question${(tag.question_count ?? 0) === 1 ? "" : "s"}`}>
+                {tag.name}<small>{tag.question_count ?? 0}</small>
+              </em>
+            ))}
+          </div>
           <div className="inline-add-row">
             <input value={tagName} onChange={(event) => setTagName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") addTag(); }} placeholder="New tag" />
             <button className="secondary-action" disabled={!tagName.trim()} onClick={addTag}>Add tag</button>

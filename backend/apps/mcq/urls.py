@@ -1,7 +1,9 @@
 import json
 import mimetypes
+import os
 import random
 import re
+from html import escape
 from pathlib import Path
 from uuid import uuid4
 
@@ -10,8 +12,14 @@ from django.http import FileResponse, JsonResponse
 from django.urls import path
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
-from pypdf import PdfWriter
-from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
+from reportlab.lib import colors
+from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.lib.units import mm
+from reportlab.platypus import Image as RLImage
+from reportlab.platypus import KeepTogether, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.pdfgen.canvas import Canvas
 
 from apps.libraries.urls import active_library, get_settings
 
@@ -30,12 +38,6 @@ from .models import (
 
 
 ALLOWED_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
-PAGE_WIDTH = 595
-PAGE_HEIGHT = 842
-PAGE_MARGIN = 54
-LINE_HEIGHT = 14
-
-
 def _normalize_source_question_number(value: object) -> str:
     text = str(value or "").strip()
     if not text:
@@ -348,10 +350,11 @@ def question_detail(request, question_id: int):
 def metadata(request):
     library = active_library()
     topics = MCQTopic.objects.filter(library=library).prefetch_related("subtopics").annotate(question_count=Count("questions", distinct=True))
+    tags = MCQTag.objects.filter(library=library).annotate(question_count=Count("questions", distinct=True)).order_by("-question_count", "name")
     return JsonResponse(
         {
             "topics": [_topic_payload(topic) for topic in topics],
-            "tags": [{"id": tag.id, "uuid": str(tag.uuid), "name": tag.name} for tag in MCQTag.objects.filter(library=library)],
+            "tags": [{"id": tag.id, "uuid": str(tag.uuid), "name": tag.name, "question_count": tag.question_count} for tag in tags],
             "difficulties": list(
                 MCQQuestion.objects.filter(library=library)
                 .exclude(difficulty="")
@@ -943,143 +946,310 @@ def _exam_output_folder(title: str) -> Path:
     return folder
 
 
-def _pdf_escape(text: object) -> str:
-    return str(text or "").replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+PDF_PAGE_WIDTH, PDF_PAGE_HEIGHT = A4
+PDF_MARGIN = 18 * mm
+CONTENT_WIDTH = PDF_PAGE_WIDTH - PDF_MARGIN * 2
 
 
-def _wrap_text(text: str, max_chars: int = 92) -> list[str]:
-    lines: list[str] = []
-    for raw_line in str(text or "").splitlines() or [""]:
-        words = raw_line.split()
-        if not words:
-            lines.append("")
+def _latex_to_readable(value: str) -> str:
+    text = str(value or "")
+    replacements = {
+        "\\pm": "±",
+        "\\times": "×",
+        "\\cdot": "·",
+        "\\theta": "θ",
+        "\\Delta": "Δ",
+        "\\pi": "π",
+        "\\rightarrow": "→",
+        "\\left": "",
+        "\\right": "",
+        "\\mathrm": "",
+    }
+    for source, target in replacements.items():
+        text = text.replace(source, target)
+    text = re.sub(r"\\frac\{([^{}]+)\}\{([^{}]+)\}", r"(\1)/(\2)", text)
+    text = re.sub(r"\\sqrt\{([^{}]+)\}", r"√(\1)", text)
+    text = re.sub(r"\\vec\{([^{}]+)\}", r"\1⃗", text)
+    text = re.sub(r"\{([^{}]+)\}", r"\1", text)
+    superscripts = str.maketrans("0123456789+-=()", "⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻⁼⁽⁾")
+    subscripts = str.maketrans("0123456789+-=()", "₀₁₂₃₄₅₆₇₈₉₊₋₌₍₎")
+    text = re.sub(r"\^\{([^{}]+)\}", lambda match: match.group(1).translate(superscripts), text)
+    text = re.sub(r"_\{([^{}]+)\}", lambda match: match.group(1).translate(subscripts), text)
+    text = re.sub(r"\^([A-Za-z0-9+\-=()])", lambda match: match.group(1).translate(superscripts), text)
+    text = re.sub(r"_([A-Za-z0-9+\-=()])", lambda match: match.group(1).translate(subscripts), text)
+    return text.strip()
+
+
+def _paragraph_text(value: object) -> str:
+    text = escape(str(value or ""))
+    text = re.sub(
+        r"\$\$([^$]+)\$\$|\$([^$]+)\$",
+        lambda match: f"<font name='Helvetica-Oblique'>{escape(_latex_to_readable(match.group(1) or match.group(2)))}</font>",
+        text,
+    )
+    return text.replace("\n", "<br/>")
+
+
+def _pdf_styles():
+    base = getSampleStyleSheet()
+    body = ParagraphStyle("TeacherDeskBody", parent=base["BodyText"], fontName="Helvetica", fontSize=11, leading=14, spaceAfter=6)
+    meta = ParagraphStyle("TeacherDeskMeta", parent=body, fontSize=7.5, leading=9, textColor=colors.HexColor("#6b7280"), spaceAfter=4)
+    title = ParagraphStyle("TeacherDeskTitle", parent=body, fontName="Helvetica-Bold", fontSize=14, leading=18, spaceAfter=12)
+    option = ParagraphStyle("TeacherDeskOption", parent=body, leftIndent=0, spaceAfter=4)
+    key = ParagraphStyle("TeacherDeskKey", parent=body, fontSize=9, leading=12)
+    return {"body": body, "meta": meta, "title": title, "option": option, "key": key}
+
+
+def _rich_src_asset(src: object, library) -> MCQImageAsset | None:
+    match = re.search(r"/api/mcq/assets/(\d+)/file/", str(src or ""))
+    if not match:
+        return None
+    return MCQImageAsset.objects.filter(id=int(match.group(1)), library=library).first()
+
+
+def _image_flowable(asset: MCQImageAsset | None, width_percent: float = 100, max_height: float = 160, h_align: str = "CENTER"):
+    if not asset:
+        return None
+    path = _asset_disk_path(asset)
+    if not path.exists():
+        return None
+    width = min(max(float(width_percent or 100), 5), 180) / 100 * CONTENT_WIDTH
+    try:
+        image = RLImage(str(path))
+        ratio = image.imageHeight / image.imageWidth if image.imageWidth else 1
+        image.drawWidth = min(width, CONTENT_WIDTH)
+        image.drawHeight = image.drawWidth * ratio
+        if image.drawHeight > max_height:
+            image.drawHeight = max_height
+            image.drawWidth = image.drawHeight / ratio
+        image.hAlign = h_align
+        return image
+    except Exception:
+        return None
+
+
+def _rich_node_flowables(node: dict[str, object], question: MCQQuestion, styles: dict[str, ParagraphStyle]) -> list[object]:
+    node_type = node.get("type")
+    content = node.get("content") if isinstance(node.get("content"), list) else []
+    if node_type == "doc":
+        flowables: list[object] = []
+        for child in content:
+            if isinstance(child, dict):
+                flowables.extend(_rich_node_flowables(child, question, styles))
+        return flowables
+    if node_type in {"paragraph", "heading"}:
+        text = _rich_inline_text(content)
+        if not text.strip():
+            return [Spacer(1, 4)]
+        attrs = node.get("attrs") if isinstance(node.get("attrs"), dict) else {}
+        align_map = {"center": TA_CENTER, "right": TA_RIGHT, "left": TA_LEFT}
+        style = ParagraphStyle(
+            f"TDParagraph{id(node)}",
+            parent=styles["body"],
+            alignment=align_map.get(str(attrs.get("textAlign") or "left"), TA_LEFT),
+            fontName="Helvetica-Bold" if node_type == "heading" else "Helvetica",
+        )
+        return [Paragraph(text, style)]
+    if node_type == "image":
+        attrs = node.get("attrs") if isinstance(node.get("attrs"), dict) else {}
+        asset = _rich_src_asset(attrs.get("src"), question.library)
+        align = str(attrs.get("data-align") or "center").upper()
+        width = float(attrs.get("width") or 100)
+        image = _image_flowable(asset, width, max_height=230, h_align={"LEFT": "LEFT", "RIGHT": "RIGHT"}.get(align, "CENTER"))
+        return [image, Spacer(1, 6)] if image else []
+    if node_type == "table":
+        rows = []
+        for row in content:
+            if not isinstance(row, dict):
+                continue
+            cells = []
+            for cell in row.get("content", []) if isinstance(row.get("content"), list) else []:
+                cells.append(Paragraph(_rich_inline_text(cell.get("content", []) if isinstance(cell, dict) else []), styles["body"]))
+            if cells:
+                rows.append(cells)
+        if not rows:
+            return []
+        table = Table(rows, hAlign="LEFT")
+        table.setStyle(TableStyle([("GRID", (0, 0), (-1, -1), 0.5, colors.black), ("VALIGN", (0, 0), (-1, -1), "MIDDLE"), ("FONTSIZE", (0, 0), (-1, -1), 9)]))
+        return [table, Spacer(1, 8)]
+    flowables = []
+    for child in content:
+        if isinstance(child, dict):
+            flowables.extend(_rich_node_flowables(child, question, styles))
+    return flowables
+
+
+def _rich_inline_text(nodes: list[object]) -> str:
+    parts: list[str] = []
+    for node in nodes:
+        if not isinstance(node, dict):
             continue
-        line = ""
-        for word in words:
-            candidate = f"{line} {word}".strip()
-            if len(candidate) > max_chars and line:
-                lines.append(line)
-                line = word
-            else:
-                line = candidate
-        if line:
-            lines.append(line)
-    return lines
+        if node.get("type") == "text":
+            text = _paragraph_text(node.get("text") or "")
+            marks = node.get("marks") if isinstance(node.get("marks"), list) else []
+            if any(isinstance(mark, dict) and mark.get("type") == "bold" for mark in marks):
+                text = f"<b>{text}</b>"
+            if any(isinstance(mark, dict) and mark.get("type") == "italic" for mark in marks):
+                text = f"<i>{text}</i>"
+            parts.append(text)
+        elif node.get("type") == "hardBreak":
+            parts.append("<br/>")
+        else:
+            parts.append(_rich_inline_text(node.get("content", []) if isinstance(node.get("content"), list) else []))
+    return "".join(parts)
 
 
-def _question_text(question: MCQQuestion) -> list[str]:
-    if question.content_text.strip():
-        lines = _wrap_text(question.content_text)
-    else:
-        lines = []
-        for block in question.blocks.all():
-            if block.text:
-                lines.extend(_wrap_text(block.text))
-            if block.asset_id:
-                lines.append(f"[image: {block.asset.original_name if block.asset else 'question image'}]")
-            if block.table_data:
-                for row in block.table_data.get("rows", []):
-                    if isinstance(row, list):
-                        lines.append(" | ".join(str(cell) for cell in row))
-    return lines or ["[No question text saved]"]
+def _question_content_flowables(question: MCQQuestion, styles: dict[str, ParagraphStyle]) -> list[object]:
+    if isinstance(question.content_json, dict) and question.content_json.get("content"):
+        flowables = _rich_node_flowables(question.content_json, question, styles)
+        if flowables:
+            return flowables
+    flowables: list[object] = []
+    for block in question.blocks.all():
+        if block.block_type == MCQQuestionBlock.BlockType.IMAGE:
+            image = _image_flowable(block.asset, block.settings.get("width", 100) if isinstance(block.settings, dict) else 100, max_height=230)
+            if image:
+                flowables.extend([image, Spacer(1, 6)])
+        elif block.block_type == MCQQuestionBlock.BlockType.TABLE:
+            rows = block.table_data.get("rows", []) if isinstance(block.table_data, dict) else []
+            if rows:
+                table = Table([[Paragraph(_paragraph_text(cell), styles["body"]) for cell in row] for row in rows], hAlign="LEFT")
+                table.setStyle(TableStyle([("GRID", (0, 0), (-1, -1), 0.5, colors.black), ("VALIGN", (0, 0), (-1, -1), "MIDDLE")]))
+                flowables.extend([table, Spacer(1, 8)])
+        elif block.text:
+            flowables.append(Paragraph(_paragraph_text(block.text), styles["body"]))
+    return flowables or [Paragraph("[No question text saved]", styles["body"])]
 
 
-def _option_text(option: MCQOption) -> str:
-    if option.layout_settings.get("table_cells"):
-        return " | ".join(str(cell) for cell in option.layout_settings.get("table_cells", []))
-    if option.content_text:
-        return option.content_text
-    fragments = []
-    for block in option.blocks.all():
-        if block.text:
-            fragments.append(block.text)
-        if block.asset_id:
-            fragments.append(f"[image: {block.asset.original_name if block.asset else 'option image'}]")
-    return " ".join(fragments).strip() or "Answer option"
+def _option_flowables(option: MCQOption, styles: dict[str, ParagraphStyle], teacher: bool, display_label: str) -> list[object]:
+    parts: list[object] = []
+    correct = " ✓" if teacher and option.is_correct else ""
+    text_blocks = [block for block in option.blocks.all() if block.text]
+    image_blocks = [block for block in option.blocks.all() if block.asset_id]
+    text = option.content_text or " ".join(block.text for block in text_blocks)
+    paragraph = Paragraph(f"<b>{display_label}.</b>{correct} {_paragraph_text(text or '')}", styles["option"])
+    parts.append(paragraph)
+    for block in image_blocks:
+        settings = block.settings if isinstance(block.settings, dict) else {}
+        align = str(settings.get("align") or "center").upper()
+        image = _image_flowable(block.asset, settings.get("width", 100), max_height=float(settings.get("height") or 145), h_align={"LEFT": "LEFT", "RIGHT": "RIGHT"}.get(align, "CENTER"))
+        if image:
+            parts.append(image)
+    return parts
 
 
-def _question_render_lines(question: MCQQuestion, options: list[tuple[str, MCQOption]], question_number: int, include_metadata: bool, metadata_position: str, teacher: bool = False) -> list[str]:
-    metadata = f"{question.exam_code or 'manual'} {question.source_question_number or f'Q{question_number}'}"
-    lines: list[str] = []
-    if include_metadata and metadata_position == "above":
-        lines.append(metadata)
-    lines.extend([f"{question_number}. {line}" if index == 0 else f"   {line}" for index, line in enumerate(_question_text(question))])
-    if include_metadata and metadata_position == "below":
-        lines.append(f"   Source: {metadata}")
-    lines.append("")
-    for display_label, option in options:
-        marker = " *" if teacher and option.is_correct else ""
-        option_lines = _wrap_text(_option_text(option), 82)
-        for index, line in enumerate(option_lines):
-            prefix = f"   {display_label}.{marker} " if index == 0 else "      "
-            lines.append(f"{prefix}{line}")
-    return lines
+def _options_flowable(question: MCQQuestion, options: list[tuple[str, MCQOption]], styles: dict[str, ParagraphStyle], teacher: bool):
+    if question.option_layout == MCQQuestion.OptionLayout.TABLE:
+        first = next((option for _, option in options if option.layout_settings.get("table_cells")), None)
+        headers = first.layout_settings.get("table_headers", []) if first else []
+        show_headers = question.layout_settings.get("option_image_layout", {}).get("table_headers", True)
+        show_borders = question.layout_settings.get("option_image_layout", {}).get("table_borders", True)
+        rows: list[list[object]] = []
+        if show_headers:
+            rows.append([Paragraph("", styles["body"])] + [Paragraph(f"<b>{_paragraph_text(header)}</b>", styles["body"]) for header in headers])
+        for display_label, option in options:
+            cells = [Paragraph(f"<b>{display_label}</b>", styles["body"])]
+            for value in option.layout_settings.get("table_cells", []):
+                cells.append(Paragraph(_paragraph_text(value), styles["body"]))
+            rows.append(cells)
+        table = Table(rows, hAlign="LEFT", repeatRows=1 if show_headers else 0)
+        commands = [("VALIGN", (0, 0), (-1, -1), "MIDDLE"), ("ALIGN", (0, 0), (-1, -1), "CENTER"), ("FONTSIZE", (0, 0), (-1, -1), 9)]
+        if show_borders:
+            commands.append(("GRID", (0, 0), (-1, -1), 0.5, colors.black))
+        table.setStyle(TableStyle(commands))
+        return table
+
+    columns = 1
+    if question.option_layout == MCQQuestion.OptionLayout.TWO_COLUMN:
+        columns = 2
+    elif question.option_layout in {MCQQuestion.OptionLayout.FOUR_COLUMN, MCQQuestion.OptionLayout.GRID}:
+        columns = 4
+    cells = [_option_flowables(option, styles, teacher, label) for label, option in options]
+    rows = [cells[index:index + columns] for index in range(0, len(cells), columns)]
+    while rows and len(rows[-1]) < columns:
+        rows[-1].append("")
+    table = Table(rows, colWidths=[CONTENT_WIDTH / columns] * columns, hAlign="LEFT")
+    table.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"), ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 8), ("BOTTOMPADDING", (0, 0), (-1, -1), 8)]))
+    return table
 
 
-def _make_pdf(path: Path, title: str, question_groups: list[tuple[MCQQuestion, list[tuple[str, MCQOption]]]], include_metadata: bool, metadata_position: str, teacher: bool = False):
-    writer = PdfWriter()
-    page_lines: list[str] = []
-    pages: list[list[str]] = []
-    available_lines = int((PAGE_HEIGHT - PAGE_MARGIN * 2) / LINE_HEIGHT)
-    page_lines.extend([title, ""])
+def _tokens(text: str, title: str, variant: int, mode: str, page: int, pages: int) -> str:
+    return str(text or "").format(title=title, variant=variant, mode=mode, page=page, pages=pages, date=timezone.localdate().isoformat())
+
+
+class HeaderFooterCanvas(Canvas):
+    def __init__(self, *args, header_footer: dict[str, object] | None = None, title: str = "", variant: int = 1, mode: str = "", **kwargs):
+        super().__init__(*args, **kwargs)
+        self._saved_page_states = []
+        self.header_footer = header_footer or {}
+        self.doc_title = title
+        self.variant = variant
+        self.mode = mode
+
+    def showPage(self):
+        self._saved_page_states.append(dict(self.__dict__))
+        self._startPage()
+
+    def save(self):
+        page_count = len(self._saved_page_states)
+        for state in self._saved_page_states:
+            self.__dict__.update(state)
+            self._draw_header_footer(page_count)
+            super().showPage()
+        super().save()
+
+    def _draw_header_footer(self, page_count: int):
+        page = self._pageNumber
+        self.setFont("Helvetica", 8)
+        self.setFillColor(colors.HexColor("#4b5563"))
+        positions = {
+            "left": (PDF_MARGIN, TA_LEFT),
+            "center": (PDF_PAGE_WIDTH / 2, TA_CENTER),
+            "right": (PDF_PAGE_WIDTH - PDF_MARGIN, TA_RIGHT),
+        }
+        for area, y in (("header", PDF_PAGE_HEIGHT - 10 * mm), ("footer", 10 * mm)):
+            config = self.header_footer.get(area, {}) if isinstance(self.header_footer.get(area, {}), dict) else {}
+            for key, (x, alignment) in positions.items():
+                value = _tokens(str(config.get(key, "")), self.doc_title, self.variant, self.mode, page, page_count)
+                if not value:
+                    continue
+                self.drawString(x, y, value) if alignment == TA_LEFT else self.drawCentredString(x, y, value) if alignment == TA_CENTER else self.drawRightString(x, y, value)
+
+
+def _make_pdf(path: Path, title: str, question_groups: list[tuple[MCQQuestion, list[tuple[str, MCQOption]]]], include_metadata: bool, metadata_position: str, teacher: bool = False, header_footer: dict[str, object] | None = None, variant: int = 1, mode: str = ""):
+    styles = _pdf_styles()
+    doc = SimpleDocTemplate(str(path), pagesize=A4, rightMargin=PDF_MARGIN, leftMargin=PDF_MARGIN, topMargin=18 * mm, bottomMargin=18 * mm)
+    story: list[object] = [Paragraph(_paragraph_text(title), styles["title"])]
     for index, (question, options) in enumerate(question_groups, start=1):
-        question_lines = _question_render_lines(question, options, index, include_metadata, metadata_position, teacher)
-        needed = len(question_lines) + 2
-        if len(page_lines) + needed > available_lines and page_lines:
-            pages.append(page_lines)
-            page_lines = []
-        page_lines.extend(question_lines)
-        page_lines.append("")
-    if page_lines:
-        pages.append(page_lines)
-    for lines in pages or [[title]]:
-        page = writer.add_blank_page(width=PAGE_WIDTH, height=PAGE_HEIGHT)
-        commands = ["BT", "/F1 11 Tf", "1 0 0 1 54 788 Tm", "14 TL"]
-        for line in lines:
-            commands.append(f"({_pdf_escape(line)}) Tj")
-            commands.append("T*")
-        commands.append("ET")
-        stream = DecodedStreamObject()
-        stream.set_data(("\n".join(commands) + "\n").encode("latin-1", errors="replace"))
-        page[NameObject("/Contents")] = writer._add_object(stream)
-        page[NameObject("/Resources")] = DictionaryObject({
-            NameObject("/Font"): DictionaryObject({
-                NameObject("/F1"): writer._add_object(
-                    DictionaryObject({
-                        NameObject("/Type"): NameObject("/Font"),
-                        NameObject("/Subtype"): NameObject("/Type1"),
-                        NameObject("/BaseFont"): NameObject("/Helvetica"),
-                    })
-                )
-            })
-        })
-    with path.open("wb") as output:
-        writer.write(output)
+        metadata = f"{question.exam_code or 'manual'} {question.source_question_number or f'Q{index}'}"
+        question_parts: list[object] = []
+        if include_metadata and metadata_position == "above":
+            question_parts.append(Paragraph(_paragraph_text(metadata), styles["meta"]))
+        content = _question_content_flowables(question, styles)
+        content_table = Table([[Paragraph(f"<b>{index}</b>", styles["body"]), content]], colWidths=[18, CONTENT_WIDTH - 18])
+        content_table.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"), ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0)]))
+        question_parts.append(content_table)
+        if include_metadata and metadata_position == "below":
+            question_parts.append(Paragraph(f"Source: {_paragraph_text(metadata)}", styles["meta"]))
+        question_parts.append(Spacer(1, 5))
+        question_parts.append(_options_flowable(question, options, styles, teacher))
+        question_parts.append(Spacer(1, 12))
+        story.append(KeepTogether(question_parts))
+    doc.build(story, canvasmaker=lambda *args, **kwargs: HeaderFooterCanvas(*args, header_footer=header_footer, title=title, variant=variant, mode=mode, **kwargs))
 
 
-def _make_answer_key_pdf(path: Path, title: str, question_groups: list[tuple[MCQQuestion, list[tuple[str, MCQOption]]]]):
-    writer = PdfWriter()
-    page = writer.add_blank_page(width=PAGE_WIDTH, height=PAGE_HEIGHT)
-    lines = [f"{title} - Answer key", ""]
+def _make_answer_key_pdf(path: Path, title: str, question_groups: list[tuple[MCQQuestion, list[tuple[str, MCQOption]]]], header_footer: dict[str, object] | None = None, variant: int = 1, mode: str = ""):
+    styles = _pdf_styles()
+    doc = SimpleDocTemplate(str(path), pagesize=A4, rightMargin=PDF_MARGIN, leftMargin=PDF_MARGIN, topMargin=18 * mm, bottomMargin=18 * mm)
+    rows = [[Paragraph("<b>Q</b>", styles["key"]), Paragraph("<b>Answer</b>", styles["key"]), Paragraph("<b>Source</b>", styles["key"]), Paragraph("<b>Topics</b>", styles["key"])]]
     for index, (question, options) in enumerate(question_groups, start=1):
         correct = next((display_label for display_label, option in options if option.is_correct), "-")
         topics = ", ".join(topic.name for topic in question.topics.all()) or "-"
-        lines.append(f"{index}. {correct}   {question.exam_code or '-'} {question.source_question_number or '-'}   {topics}")
-    commands = ["BT", "/F1 10 Tf", "1 0 0 1 54 788 Tm", "13 TL"]
-    for line in lines[:56]:
-        commands.append(f"({_pdf_escape(line)}) Tj")
-        commands.append("T*")
-    commands.append("ET")
-    stream = DecodedStreamObject()
-    stream.set_data(("\n".join(commands) + "\n").encode("latin-1", errors="replace"))
-    page[NameObject("/Contents")] = writer._add_object(stream)
-    page[NameObject("/Resources")] = DictionaryObject({
-        NameObject("/Font"): DictionaryObject({
-            NameObject("/F1"): writer._add_object(DictionaryObject({NameObject("/Type"): NameObject("/Font"), NameObject("/Subtype"): NameObject("/Type1"), NameObject("/BaseFont"): NameObject("/Helvetica")}))
-        })
-    })
-    with path.open("wb") as output:
-        writer.write(output)
+        rows.append([Paragraph(str(index), styles["key"]), Paragraph(correct, styles["key"]), Paragraph(_paragraph_text(f"{question.exam_code or '-'} {question.source_question_number or '-'}"), styles["key"]), Paragraph(_paragraph_text(topics), styles["key"])])
+    table = Table(rows, colWidths=[28, 52, 150, CONTENT_WIDTH - 230])
+    table.setStyle(TableStyle([("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#cbd5e1")), ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e5f4f2")), ("VALIGN", (0, 0), (-1, -1), "TOP")]))
+    story = [Paragraph(_paragraph_text(f"{title} - Answer key"), styles["title"]), table]
+    doc.build(story, canvasmaker=lambda *args, **kwargs: HeaderFooterCanvas(*args, header_footer=header_footer, title=title, variant=variant, mode=mode, **kwargs))
 
 
 def _eligible_mcq_questions(review_pool: str):
@@ -1142,6 +1312,7 @@ def generate_exam(request):
     shuffle_options = bool(payload.get("shuffle_options"))
     variants = min(max(int(payload.get("variants") or 1), 1), 10)
     question_count = min(max(int(payload.get("question_count") or 40), 1), 100)
+    header_footer = payload.get("header_footer") if isinstance(payload.get("header_footer"), dict) else {}
 
     questions = _eligible_mcq_questions(review_pool)
     warnings: list[dict[str, object]] = []
@@ -1193,9 +1364,9 @@ def generate_exam(request):
         student_path = output_folder / f"{_safe_filename(title)}{suffix}_Student.pdf"
         teacher_path = output_folder / f"{_safe_filename(title)}{suffix}_Teacher.pdf"
         key_path = output_folder / f"{_safe_filename(title)}{suffix}_Answer_Key.pdf"
-        _make_pdf(student_path, f"{title}{suffix}", question_groups, include_metadata, metadata_position, teacher=False)
-        _make_pdf(teacher_path, f"{title}{suffix} - Teacher", question_groups, include_metadata, metadata_position, teacher=True)
-        _make_answer_key_pdf(key_path, f"{title}{suffix}", question_groups)
+        _make_pdf(student_path, f"{title}{suffix}", question_groups, include_metadata, metadata_position, teacher=False, header_footer=header_footer, variant=variant_index, mode=mode)
+        _make_pdf(teacher_path, f"{title}{suffix} - Teacher", question_groups, include_metadata, metadata_position, teacher=True, header_footer=header_footer, variant=variant_index, mode=mode)
+        _make_answer_key_pdf(key_path, f"{title}{suffix}", question_groups, header_footer=header_footer, variant=variant_index, mode=mode)
         variant_payloads.append({"variant": variant_index, "student_pdf": str(student_path), "teacher_pdf": str(teacher_path), "answer_key_pdf": str(key_path), "answer_order": answer_order})
     first = variant_payloads[0]
     exam.student_pdf_path = first["student_pdf"]
@@ -1216,6 +1387,21 @@ def generate_exam(request):
     )
 
 
+@csrf_exempt
+def open_exam_folder(request):
+    if request.method != "POST":
+        return JsonResponse({"error": "POST is required."}, status=405)
+    try:
+        payload = json.loads(request.body or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Request body must be valid JSON."}, status=400)
+    folder = Path(str(payload.get("folder") or "")).expanduser()
+    if not folder.exists() or not folder.is_dir():
+        return JsonResponse({"error": f"Folder not found: {folder}"}, status=404)
+    os.startfile(str(folder))
+    return JsonResponse({"opened": True, "folder": str(folder)})
+
+
 urlpatterns = [
     path("", index),
     path("dashboard/", dashboard),
@@ -1227,6 +1413,7 @@ urlpatterns = [
     path("questions/<int:question_id>/duplicate/", duplicate_question),
     path("questions/<int:question_id>/delete/", delete_question),
     path("exams/generate/", generate_exam),
+    path("exams/open-folder/", open_exam_folder),
     path("assets/", assets),
     path("assets/upload/", upload_asset),
     path("assets/<int:asset_id>/file/", asset_file),
