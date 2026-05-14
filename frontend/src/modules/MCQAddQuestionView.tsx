@@ -24,7 +24,6 @@ type ContentBlockDraft = { id: string; block_type: ContentBlockType; text: strin
 type OptionDraft = {
   label: string;
   text: string;
-  equation: string;
   assetId: number | null;
   imageWidth: number;
   imageHeight: number;
@@ -129,7 +128,6 @@ const defaultRichContent: JSONContent = {
 const createDefaultOption = (label: string): OptionDraft => ({
   label,
   text: "",
-  equation: "",
   assetId: null,
   imageWidth: 100,
   imageHeight: 0,
@@ -175,40 +173,6 @@ const RichImage = TiptapImage.extend({
     };
   },
 });
-
-function MathShortcutIcon({ variant }: { variant: "fraction" | "power" | "subscript" | "root" | "vector" | "theta" | "delta" | "pi" | "sum" | "integral" | "limit" | "matrix" }) {
-  return (
-    <svg className="math-shortcut-icon" viewBox="0 0 24 24" aria-hidden="true">
-      {variant === "fraction" ? <><path d="M6 12h12" /><circle cx="10" cy="7" r="1.6" /><circle cx="14" cy="17" r="1.6" /></> : null}
-      {variant === "power" ? <><path d="M6 17l7-10" /><path d="M15 7h3v3" /></> : null}
-      {variant === "subscript" ? <><path d="M6 8l8 8M14 8l-8 8" /><path d="M16 17h3v2h-3z" /></> : null}
-      {variant === "root" ? <path d="M4 13h4l2 5 4-12h6" /> : null}
-      {variant === "vector" ? <><path d="M5 15h12" /><path d="M13 11l4 4-4 4" /><path d="M8 9h8" /></> : null}
-      {variant === "theta" ? <><ellipse cx="12" cy="12" rx="6" ry="8" /><path d="M6 12h12" /></> : null}
-      {variant === "delta" ? <path d="M12 5l7 14H5L12 5z" /> : null}
-      {variant === "pi" ? <><path d="M5 7h14" /><path d="M8 7v12" /><path d="M16 7v12" /></> : null}
-      {variant === "sum" ? <path d="M18 5H7l6 7-6 7h11" /> : null}
-      {variant === "integral" ? <path d="M15 4c-3 0-3 4-3 8s0 8-3 8" /> : null}
-      {variant === "limit" ? <><path d="M4 16h16" /><path d="M8 16v-8" /><path d="M8 8h4" /><path d="M16 16v-5" /><circle cx="16" cy="8" r="1" /></> : null}
-      {variant === "matrix" ? <><path d="M6 5v14M18 5v14" /><path d="M9 8h2M13 8h2M9 12h2M13 12h2M9 16h2M13 16h2" /></> : null}
-    </svg>
-  );
-}
-
-const equationSnippets: Array<{ icon: ReactNode; value: string; title: string }> = [
-  { icon: <MathShortcutIcon variant="fraction" />, value: "\\frac{a}{b}", title: "Fraction" },
-  { icon: <MathShortcutIcon variant="power" />, value: "x^{2}", title: "Power" },
-  { icon: <MathShortcutIcon variant="subscript" />, value: "x_{n}", title: "Subscript" },
-  { icon: <MathShortcutIcon variant="root" />, value: "\\sqrt{x}", title: "Square root" },
-  { icon: <MathShortcutIcon variant="vector" />, value: "\\vec{v}", title: "Vector" },
-  { icon: <MathShortcutIcon variant="theta" />, value: "\\theta", title: "Theta" },
-  { icon: <MathShortcutIcon variant="delta" />, value: "\\Delta", title: "Delta" },
-  { icon: <MathShortcutIcon variant="pi" />, value: "\\pi", title: "Pi" },
-  { icon: <MathShortcutIcon variant="sum" />, value: "\\sum_{i=1}^{n}", title: "Summation" },
-  { icon: <MathShortcutIcon variant="integral" />, value: "\\int_{a}^{b}", title: "Integral" },
-  { icon: <MathShortcutIcon variant="limit" />, value: "\\lim_{x\\to 0}", title: "Limit" },
-  { icon: <MathShortcutIcon variant="matrix" />, value: "\\begin{bmatrix} a & b \\\\ c & d \\end{bmatrix}", title: "Matrix" },
-];
 
 function clipboardImageFile(event: { clipboardData: DataTransfer | null }): File | null {
   if (!event.clipboardData) return null;
@@ -522,7 +486,6 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
               return {
                 label: option.label,
                 text: [textBlock?.text ?? "", legacyEquation].filter(Boolean).join(textBlock?.text && legacyEquation ? "\n" : ""),
-                equation: "",
                 assetId: imageBlock?.asset_id ?? null,
                 imageWidth: imageBlock?.settings?.width ?? 100,
                 imageHeight: imageBlock?.settings?.height ?? 0,
@@ -830,11 +793,10 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
       option.label,
       [
         option.text.trim() ? { block_type: "text", text: option.text, order: 1 } : null,
-        option.equation.trim() ? { block_type: "equation", text: option.equation.replace(/^\${1,2}|\${1,2}$/g, ""), order: 2 } : null,
         option.assetId ? {
           block_type: "image",
           asset_id: option.assetId,
-          order: 3,
+          order: 2,
           settings: {
             width: option.imageWidth,
             height: option.imageHeight,
@@ -849,7 +811,7 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
   }
 
   function optionHasContent(option: OptionDraft) {
-    if (option.text.trim() || option.equation.trim() || option.assetId) return true;
+    if (option.text.trim() || option.assetId) return true;
     if (optionLayout !== "table") return false;
     return (tableRows[option.label] ?? []).some((cell) => cell.trim());
   }
@@ -1164,7 +1126,6 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
 
   function renderOption(option: OptionDraft) {
     const asset = assets.find((item) => item.id === option.assetId);
-    const cleanEquation = option.equation.trim().replace(/^\${1,2}|\${1,2}$/g, "");
     const image = asset ? (
       <img
         className={`a4-option-image fit-${option.imageFit} align-${option.imageAlign}`}
@@ -1180,7 +1141,6 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
     const content = (
       <>
         {option.text ? <span className="option-text-fragment">{renderMathText(option.text)}</span> : null}
-        {cleanEquation ? <LatexMath latex={cleanEquation} /> : null}
       </>
     );
     return (
@@ -1189,7 +1149,7 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
         {optionImagePlacement === "top" ? image : null}
         {optionImagePlacement === "middle" && image ? <span className="option-media-middle">{image}<span>{content}</span></span> : content}
         {optionImagePlacement === "bottom" ? image : null}
-        {!option.text && !cleanEquation && !asset ? <span className="option-text-fragment">Answer option</span> : null}
+        {!option.text && !asset ? <span className="option-text-fragment">Answer option</span> : null}
       </>
     );
   }
@@ -1246,12 +1206,11 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
         } : {},
         blocks: [
           option.text.trim() ? { id: `${option.label}-text`, block_type: "text", text: option.text, order: 1 } : null,
-          option.equation.trim() ? { id: `${option.label}-equation`, block_type: "equation", text: option.equation.replace(/^\${1,2}|\${1,2}$/g, ""), order: 2 } : null,
           asset ? {
             id: `${option.label}-image`,
             block_type: "image",
             asset,
-            order: 3,
+            order: 2,
             settings: {
               width: option.imageWidth,
               height: option.imageHeight,
