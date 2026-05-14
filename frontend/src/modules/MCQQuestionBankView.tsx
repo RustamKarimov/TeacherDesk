@@ -48,10 +48,12 @@ type MCQQuestionDetailPayload = MCQQuestionRow & {
       placement?: "top" | "middle" | "bottom";
       sizing?: "individual" | "same_height" | "same_width" | "same_size";
       label_placement?: "inline" | "above";
+      label_align?: "left" | "center" | "right";
       content_align?: "left" | "center" | "right";
     };
     paper_style?: {
       font_size_pt?: number;
+      font_family?: string;
       equation_scale?: number;
       option_gap_px?: number;
       question_number_weight?: number;

@@ -10,6 +10,7 @@ export type MCQOptionImagePlacement = "top" | "middle" | "bottom";
 export type MCQOptionImageSizing = "individual" | "same_height" | "same_width" | "same_size";
 export type MCQOptionLabelPlacement = "inline" | "above";
 export type MCQOptionContentAlign = "left" | "center" | "right";
+export type MCQOptionLabelAlign = "left" | "center" | "right";
 
 export type MCQRenderBlock = {
   id?: string | number;
@@ -46,6 +47,7 @@ export type MCQOptionImageLayout = {
   placement?: MCQOptionImagePlacement;
   sizing?: MCQOptionImageSizing;
   label_placement?: MCQOptionLabelPlacement;
+  label_align?: MCQOptionLabelAlign;
   content_align?: MCQOptionContentAlign;
   table_borders?: boolean;
   table_headers?: boolean;
@@ -53,6 +55,7 @@ export type MCQOptionImageLayout = {
 
 export type MCQPaperStyle = {
   font_size_pt?: number;
+  font_family?: string;
   equation_scale?: number;
   option_gap_px?: number;
   question_number_weight?: number;
@@ -231,9 +234,11 @@ export function MCQA4Question({
   const placement = optionImageLayout.placement ?? "top";
   const sizing = optionImageLayout.sizing ?? "individual";
   const labelPlacement = optionImageLayout.label_placement ?? "inline";
+  const labelAlign = optionImageLayout.label_align ?? "center";
   const contentAlign = optionImageLayout.content_align ?? "left";
   const cardStyle = {
     "--mcq-paper-font-size": `${Number(paperStyle.font_size_pt ?? 11) * 1.333}px`,
+    "--mcq-paper-font-family": paperStyle.font_family || "Calibri, Segoe UI, Arial, sans-serif",
     "--mcq-equation-scale": `${Number(paperStyle.equation_scale ?? 1)}`,
     "--mcq-option-gap": `${Number(paperStyle.option_gap_px ?? 6)}px`,
     "--mcq-question-number-font-weight": Number(paperStyle.question_number_weight ?? 700),
@@ -250,11 +255,11 @@ export function MCQA4Question({
             )}
           </div>
           {optionLayout === "table" ? renderTableOptions(sortedOptions, teacherView, optionImageLayout) : (
-            <div className={`option-preview-grid layout-${optionLayout} option-images-${sizing} label-${labelPlacement} align-${contentAlign} image-place-${placement}`}>
+            <div className={`option-preview-grid layout-${optionLayout} option-images-${sizing} label-${labelPlacement} label-align-${labelAlign} align-${contentAlign} image-place-${placement}`}>
               {sortedOptions.map((option) => (
                 <span className={teacherView && option.is_correct ? "correct" : ""} key={option.id ?? option.label}>
                   <b>{option.label}{labelPlacement === "inline" ? "." : ""}</b>
-                  {renderOptionContent(option, placement)}
+                  <span className="option-body">{renderOptionContent(option, placement)}</span>
                 </span>
               ))}
             </div>

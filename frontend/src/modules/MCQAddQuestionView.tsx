@@ -36,6 +36,7 @@ type ImageAlign = "left" | "center" | "right";
 type OptionImagePlacement = "top" | "middle" | "bottom";
 type OptionImageSizing = "individual" | "same_height" | "same_width" | "same_size";
 type OptionLabelPlacement = "inline" | "above";
+type OptionLabelAlign = "left" | "center" | "right";
 type OptionContentAlign = "left" | "center" | "right";
 type LastMetadataDefaults = {
   subject: string;
@@ -80,12 +81,14 @@ type MCQQuestionDetailPayload = {
       placement?: OptionImagePlacement;
       sizing?: OptionImageSizing;
       label_placement?: OptionLabelPlacement;
+      label_align?: OptionLabelAlign;
       content_align?: OptionContentAlign;
       table_borders?: boolean;
       table_headers?: boolean;
     };
     paper_style?: {
       font_size_pt?: number;
+      font_family?: string;
       equation_scale?: number;
       option_gap_px?: number;
       question_number_weight?: number;
@@ -116,6 +119,8 @@ const optionLayoutVisuals = [
   { value: "grid", title: "Image grid", subtitle: "visual answers", className: "grid" },
   { value: "table", title: "Table", subtitle: "A-D rows", className: "table" },
 ];
+
+const paperFontOptions = ["Calibri", "Arial", "Times New Roman", "Cambria", "Segoe UI"];
 
 const newId = () => Math.random().toString(36).slice(2);
 
@@ -218,6 +223,7 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
   const [optionImagePlacement, setOptionImagePlacement] = useState<OptionImagePlacement>("top");
   const [optionImageSizing, setOptionImageSizing] = useState<OptionImageSizing>("individual");
   const [optionLabelPlacement, setOptionLabelPlacement] = useState<OptionLabelPlacement>("inline");
+  const [optionLabelAlign, setOptionLabelAlign] = useState<OptionLabelAlign>("center");
   const [optionContentAlign, setOptionContentAlign] = useState<OptionContentAlign>("left");
   const [tableShowBorders, setTableShowBorders] = useState(true);
   const [tableShowHeaders, setTableShowHeaders] = useState(true);
@@ -244,8 +250,10 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
   const [selectedImageFit, setSelectedImageFit] = useState<"contain" | "cover" | null>(null);
   const [selectedImageAlign, setSelectedImageAlign] = useState<ImageAlign | null>(null);
   const [paperFontSizePt, setPaperFontSizePt] = useState(11);
+  const [paperFontFamily, setPaperFontFamily] = useState("Calibri");
   const [equationScale, setEquationScale] = useState(1);
   const [optionGapPx, setOptionGapPx] = useState(6);
+  const [bulkOptionImageWidth, setBulkOptionImageWidth] = useState(60);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -534,6 +542,11 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
         ? optionImageLayoutSettings?.label_placement as OptionLabelPlacement
         : "inline",
     );
+    setOptionLabelAlign(
+      ["left", "center", "right"].includes(String(optionImageLayoutSettings?.label_align))
+        ? optionImageLayoutSettings?.label_align as OptionLabelAlign
+        : "center",
+    );
     setOptionContentAlign(
       ["left", "center", "right"].includes(String(optionImageLayoutSettings?.content_align))
         ? optionImageLayoutSettings?.content_align as OptionContentAlign
@@ -543,6 +556,7 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
     setTableShowHeaders(optionImageLayoutSettings?.table_headers !== false);
     const paperStyleSettings = question.layout_settings?.paper_style;
     setPaperFontSizePt(Number(paperStyleSettings?.font_size_pt ?? 11));
+    setPaperFontFamily(String(paperStyleSettings?.font_family || "Calibri"));
     setEquationScale(Number(paperStyleSettings?.equation_scale ?? 1));
     setOptionGapPx(Number(paperStyleSettings?.option_gap_px ?? 6));
     setSubject(question.subject || "Physics");
@@ -856,12 +870,14 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
           placement: optionImagePlacement,
           sizing: optionImageSizing,
           label_placement: optionLabelPlacement,
+          label_align: optionLabelAlign,
           content_align: optionContentAlign,
           table_borders: tableShowBorders,
           table_headers: tableShowHeaders,
         },
         paper_style: {
           font_size_pt: paperFontSizePt,
+          font_family: paperFontFamily,
           equation_scale: equationScale,
           option_gap_px: optionGapPx,
           question_number_weight: 700,
@@ -976,7 +992,12 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
     setOptionImagePlacement("top");
     setOptionImageSizing("individual");
     setOptionLabelPlacement("inline");
+    setOptionLabelAlign("center");
     setOptionContentAlign("left");
+    setPaperFontSizePt(11);
+    setPaperFontFamily("Calibri");
+    setEquationScale(1);
+    setOptionGapPx(6);
     setTableShowBorders(true);
     setTableShowHeaders(true);
     setStep("question");
@@ -1345,7 +1366,8 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
               <div className="section-intro compact"><strong>Write the question on the A4 canvas</strong><span>Type normally, insert equations with LaTeX shortcuts, and add images or tables where they belong.</span></div>
               <div className="paper-style-panel">
                 <div><strong>Paper style</strong><span>Saved with this question and mirrored in previews.</span></div>
-                <label><span>Font</span><input type="number" min={8} max={16} step={0.5} value={paperFontSizePt} onChange={(event) => setPaperFontSizePt(Number(event.target.value || 11))} /><em>pt</em></label>
+                <label><span>Face</span><select value={paperFontFamily} onChange={(event) => setPaperFontFamily(event.target.value)}>{paperFontOptions.map((font) => <option key={font} value={font}>{font}</option>)}</select></label>
+                <label><span>Font</span><input type="number" min={8} max={18} step={0.5} value={paperFontSizePt} onChange={(event) => setPaperFontSizePt(Number(event.target.value || 11))} /><em>pt</em></label>
                 <label><span>Equation</span><input type="number" min={0.75} max={1.4} step={0.05} value={equationScale} onChange={(event) => setEquationScale(Number(event.target.value || 1))} /><em>x</em></label>
               </div>
               <div className="rich-editor-shell">
@@ -1407,6 +1429,10 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
                       <button className={optionLabelPlacement === "inline" ? "active" : ""} type="button" onClick={() => setOptionLabelPlacement("inline")} title="Show option letters inline" aria-label="Show option letters inline">A.</button>
                       <button className={optionLabelPlacement === "above" ? "active" : ""} type="button" onClick={() => setOptionLabelPlacement("above")} title="Show option letters above the content" aria-label="Show option letters above the content">A</button>
                       <span className="option-image-toolbar-divider" aria-hidden="true" />
+                      <button className={optionLabelAlign === "left" ? "active" : ""} type="button" onClick={() => setOptionLabelAlign("left")} title="Align option letters left" aria-label="Align option letters left"><AlignLeft size={17} /></button>
+                      <button className={optionLabelAlign === "center" ? "active" : ""} type="button" onClick={() => setOptionLabelAlign("center")} title="Center option letters" aria-label="Center option letters"><AlignCenter size={17} /></button>
+                      <button className={optionLabelAlign === "right" ? "active" : ""} type="button" onClick={() => setOptionLabelAlign("right")} title="Align option letters right" aria-label="Align option letters right"><AlignRight size={17} /></button>
+                      <span className="option-image-toolbar-divider" aria-hidden="true" />
                       <button className={optionContentAlign === "left" ? "active" : ""} type="button" onClick={() => setOptionContentAlign("left")} title="Align option content left" aria-label="Align option content left"><AlignLeft size={17} /></button>
                       <button className={optionContentAlign === "center" ? "active" : ""} type="button" onClick={() => setOptionContentAlign("center")} title="Center option content" aria-label="Center option content"><AlignCenter size={17} /></button>
                       <button className={optionContentAlign === "right" ? "active" : ""} type="button" onClick={() => setOptionContentAlign("right")} title="Align option content right" aria-label="Align option content right"><AlignRight size={17} /></button>
@@ -1425,6 +1451,10 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
                     <strong>Apply to all option images</strong>
                     <div className="option-image-toolbar dense" aria-label="Bulk option image controls">
                       {[25, 40, 60, 75, 100].map((width) => <button type="button" key={width} onClick={() => updateAllOptionImages({ imageWidth: width })} title={`Set all option images to ${width}%`}>{width}</button>)}
+                      <label className="toolbar-number-field" title="Set all option images to a custom width percentage">
+                        <input type="number" min={5} max={180} value={bulkOptionImageWidth} onChange={(event) => setBulkOptionImageWidth(Number(event.target.value || 60))} />
+                        <button type="button" onClick={() => updateAllOptionImages({ imageWidth: bulkOptionImageWidth })}>%</button>
+                      </label>
                       <span className="option-image-toolbar-divider" aria-hidden="true" />
                       <button type="button" onClick={() => updateAllOptionImages({ imageAlign: "left" })} title="Align all option images left"><AlignLeft size={16} /></button>
                       <button type="button" onClick={() => updateAllOptionImages({ imageAlign: "center" })} title="Center all option images"><AlignCenter size={16} /></button>
@@ -1556,7 +1586,7 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
                   table_borders: tableShowBorders,
                   table_headers: tableShowHeaders,
                 }}
-                paperStyle={{ font_size_pt: paperFontSizePt, equation_scale: equationScale, option_gap_px: optionGapPx }}
+                paperStyle={{ font_family: paperFontFamily, font_size_pt: paperFontSizePt, equation_scale: equationScale, option_gap_px: optionGapPx }}
                 emptyText="Write the question, insert equations, add images, or create a table."
               />
             </div>

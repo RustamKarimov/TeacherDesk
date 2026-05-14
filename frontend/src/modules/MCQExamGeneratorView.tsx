@@ -18,6 +18,8 @@ type HeaderFooterDraft = {
   footer: { left: string; center: string; right: string };
 };
 
+const paperFontOptions = ["Calibri", "Arial", "Times New Roman", "Cambria", "Segoe UI"];
+
 function shuffleRows(rows: MCQQuestionRow[]) {
   const copy = [...rows];
   for (let index = copy.length - 1; index > 0; index -= 1) {
@@ -122,6 +124,9 @@ export function MCQExamGeneratorView({
   const [shuffleQuestions, setShuffleQuestions] = useState(true);
   const [shuffleOptions, setShuffleOptions] = useState(false);
   const [variants, setVariants] = useState(1);
+  const [paperFontFamily, setPaperFontFamily] = useState("Calibri");
+  const [paperFontSizePt, setPaperFontSizePt] = useState(11);
+  const [paperEquationScale, setPaperEquationScale] = useState(1);
   const [generated, setGenerated] = useState<GeneratedPayload | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [headerFooter, setHeaderFooter] = useState<HeaderFooterDraft>({
@@ -209,6 +214,11 @@ export function MCQExamGeneratorView({
       shuffle_questions: shuffleQuestions,
       shuffle_options: shuffleOptions,
       variants,
+      paper_style: {
+        font_family: paperFontFamily,
+        font_size_pt: paperFontSizePt,
+        equation_scale: paperEquationScale,
+      },
       header_footer: headerFooter,
     };
     try {
@@ -279,6 +289,13 @@ export function MCQExamGeneratorView({
               <select disabled={!includeMetadata} value={metadataPosition} onChange={(event) => setMetadataPosition(event.target.value as "above" | "below")}><option value="above">Above question</option><option value="below">Below question</option></select>
               <label><input checked={shuffleQuestions} onChange={(event) => setShuffleQuestions(event.target.checked)} type="checkbox" /> Shuffle questions</label>
               <label><input checked={shuffleOptions} onChange={(event) => setShuffleOptions(event.target.checked)} type="checkbox" /> Shuffle options</label>
+            </div>
+
+            <div className="paper-export-style-panel">
+              <div><strong>Exam typography</strong><span>Applied to generated student and teacher PDFs.</span></div>
+              <label className="field-stack compact-field"><span>Font</span><select value={paperFontFamily} onChange={(event) => setPaperFontFamily(event.target.value)}>{paperFontOptions.map((font) => <option key={font} value={font}>{font}</option>)}</select></label>
+              <label className="field-stack compact-field"><span>Size</span><input min={8} max={18} step={0.5} type="number" value={paperFontSizePt} onChange={(event) => setPaperFontSizePt(Number(event.target.value || 11))} /></label>
+              <label className="field-stack compact-field"><span>Equation scale</span><input min={0.75} max={1.4} step={0.05} type="number" value={paperEquationScale} onChange={(event) => setPaperEquationScale(Number(event.target.value || 1))} /></label>
             </div>
 
             {mode === "topic" ? (

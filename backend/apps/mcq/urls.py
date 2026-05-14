@@ -1562,7 +1562,7 @@ def _option_html(option: MCQOption, display_label: str, teacher: bool, layout: d
         content = f"{image_html if placement == 'top' else ''}{text_html}{image_html if placement == 'bottom' else ''}"
     if not content:
         content = "<span class=\"option-text-fragment\">Answer option</span>"
-    return f"<span>{label}{content}</span>"
+    return f"<span>{label}<span class=\"option-body\">{content}</span></span>"
 
 
 def _table_options_html(question: MCQQuestion, options: list[tuple[str, MCQOption]], teacher: bool, layout: dict[str, object]) -> str:
@@ -1599,9 +1599,10 @@ def _options_html(question: MCQQuestion, options: list[tuple[str, MCQOption]], t
     placement = str(layout.get("placement") or "top")
     sizing = str(layout.get("sizing") or "individual")
     label = str(layout.get("label_placement") or "inline")
+    label_align = str(layout.get("label_align") or "center")
     align = str(layout.get("content_align") or "left")
     option_items = "".join(_option_html(option, display_label, teacher, layout) for display_label, option in options)
-    return f"<div class=\"option-preview-grid layout-{escape(question.option_layout)} option-images-{escape(sizing)} label-{escape(label)} align-{escape(align)} image-place-{escape(placement)}\">{option_items}</div>"
+    return f"<div class=\"option-preview-grid layout-{escape(question.option_layout)} option-images-{escape(sizing)} label-{escape(label)} label-align-{escape(label_align)} align-{escape(align)} image-place-{escape(placement)}\">{option_items}</div>"
 
 
 def _html_tokens(value: object, title: str, variant: int, mode: str) -> str:
@@ -1637,19 +1638,23 @@ def _html_header_footer(header_footer: dict[str, object] | None, title: str, var
     return "".join(sections)
 
 
-def _mcq_exam_html(title: str, question_groups: list[tuple[MCQQuestion, list[tuple[str, MCQOption]]]], include_metadata: bool, metadata_position: str, teacher: bool, header_footer: dict[str, object] | None, variant: int, mode: str) -> str:
+def _mcq_exam_html(title: str, question_groups: list[tuple[MCQQuestion, list[tuple[str, MCQOption]]]], include_metadata: bool, metadata_position: str, teacher: bool, header_footer: dict[str, object] | None, variant: int, mode: str, paper_style_override: dict[str, object] | None = None) -> str:
     header_footer = header_footer or {}
     katex_css, katex_js, auto_render_js = _katex_print_assets()
     questions = []
     for index, (question, options) in enumerate(question_groups, start=1):
         question_layout = question.layout_settings if isinstance(question.layout_settings, dict) else {}
         paper_style = question_layout.get("paper_style", {}) if isinstance(question_layout.get("paper_style", {}), dict) else {}
+        if isinstance(paper_style_override, dict):
+            paper_style = {**paper_style, **{key: value for key, value in paper_style_override.items() if value not in (None, "")}}
+        font_family = str(paper_style.get("font_family") or "Calibri")
         font_size = float(paper_style.get("font_size_pt") or 11)
         equation_scale = float(paper_style.get("equation_scale") or 1)
         option_gap = float(paper_style.get("option_gap_px") or 6)
         number_weight = int(paper_style.get("question_number_weight") or 700)
         section_style = (
             f"--mcq-print-font-size:{font_size}pt;"
+            f"--mcq-print-font-family:{escape(font_family)};"
             f"--mcq-equation-scale:{equation_scale};"
             f"--mcq-option-gap:{option_gap}px;"
             f"--mcq-question-number-font-weight:{number_weight};"
@@ -1672,7 +1677,7 @@ def _mcq_exam_html(title: str, question_groups: list[tuple[MCQQuestion, list[tup
 body {{ margin: 0; background: white; color: #111827; font-family: Calibri, "Segoe UI", Arial, sans-serif; font-size: 11pt; line-height: 1.35; }}
 h1 {{ font-size: 14pt; margin: 0 0 14px; }}
 p {{ margin: 0 0 9px; }}
-.mcq-print-question {{ break-inside: avoid; page-break-inside: avoid; margin: 0 0 18px; font-size: var(--mcq-print-font-size, 11pt); }}
+.mcq-print-question {{ break-inside: avoid; page-break-inside: avoid; margin: 0 0 18px; font-family: var(--mcq-print-font-family, Calibri, "Segoe UI", Arial, sans-serif); font-size: var(--mcq-print-font-size, 11pt); }}
 .paper-question-row {{ display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: 14px; align-items: start; }}
 .paper-question-number {{ text-align: right; font-weight: var(--mcq-question-number-font-weight, 700); }}
 .question-block-preview {{ display: grid; gap: 12px; }}
@@ -1684,16 +1689,21 @@ p {{ margin: 0 0 9px; }}
 .option-preview-grid {{ display: grid; gap: var(--mcq-option-gap, 6px); margin-top: 20px; align-items: stretch; }}
 .option-preview-grid.layout-two_column,.option-preview-grid.layout-grid {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
 .option-preview-grid.layout-four_column {{ grid-template-columns: repeat(4, minmax(0, 1fr)); }}
-.option-preview-grid > span {{ min-width: 0; min-height: 1.8em; padding: 2px 0; }}
+.option-preview-grid > span {{ display: grid; align-content: start; align-items: start; min-width: 0; min-height: 1.8em; padding: 2px 0; }}
 .option-preview-grid > span b,.option-text-fragment {{ display: inline-block; margin-right: 5px; }}
+.option-preview-grid.label-inline > span {{ grid-template-columns: auto minmax(0, 1fr); column-gap: 5px; }}
+.option-preview-grid.label-inline > span b {{ grid-column: 1; }}
+.option-preview-grid.label-inline > span .option-body {{ grid-column: 2; }}
+.option-body {{ display: grid; gap: 4px; min-width: 0; align-content: start; justify-items: start; }}
 .option-preview-grid.label-above > span {{ display: grid; gap: 4px; justify-items: start; }}
-.option-preview-grid.label-above > span b {{ display: block; width: 100%; margin: 0; text-align: center; }}
-.option-preview-grid.align-center > span {{ text-align: center; }}
-.option-preview-grid.align-center.label-above > span {{ justify-items: center; }}
-.option-preview-grid.align-right > span {{ text-align: right; }}
-.option-preview-grid.align-right.label-above > span {{ justify-items: end; }}
-.option-preview-grid.image-place-middle > span {{ display: flex; flex-direction: column; justify-content: center; }}
-.option-preview-grid.image-place-bottom > span {{ display: flex; flex-direction: column; justify-content: flex-end; }}
+.option-preview-grid.label-above > span b {{ display: block; width: 100%; margin: 0; }}
+.option-preview-grid.label-align-left > span b {{ text-align: left; }}
+.option-preview-grid.label-align-center > span b {{ text-align: center; }}
+.option-preview-grid.label-align-right > span b {{ text-align: right; }}
+.option-preview-grid.align-center .option-body {{ text-align: center; justify-items: center; }}
+.option-preview-grid.align-right .option-body {{ text-align: right; justify-items: end; }}
+.option-preview-grid.image-place-middle .option-body {{ align-self: stretch; display: flex; flex-direction: column; justify-content: center; }}
+.option-preview-grid.image-place-bottom .option-body {{ align-self: stretch; display: flex; flex-direction: column; justify-content: flex-end; }}
 .option-media-middle {{ display: inline-flex; align-items: center; gap: 8px; max-width: 100%; vertical-align: middle; }}
 .a4-option-image {{ display: block; max-width: none; object-fit: contain; margin: 6px auto; }}
 .a4-option-image.align-left {{ margin-left: 0; margin-right: auto; }}
@@ -1741,7 +1751,7 @@ if (window.renderMathInElement) {{
 </html>"""
 
 
-def _make_pdf_browser(path: Path, title: str, question_groups: list[tuple[MCQQuestion, list[tuple[str, MCQOption]]]], include_metadata: bool, metadata_position: str, teacher: bool = False, header_footer: dict[str, object] | None = None, variant: int = 1, mode: str = "") -> bool:
+def _make_pdf_browser(path: Path, title: str, question_groups: list[tuple[MCQQuestion, list[tuple[str, MCQOption]]]], include_metadata: bool, metadata_position: str, teacher: bool = False, header_footer: dict[str, object] | None = None, variant: int = 1, mode: str = "", paper_style_override: dict[str, object] | None = None) -> bool:
     browser = _browser_executable()
     if not browser:
         return False
@@ -1749,7 +1759,7 @@ def _make_pdf_browser(path: Path, title: str, question_groups: list[tuple[MCQQue
     path.parent.mkdir(parents=True, exist_ok=True)
     html_path = path.with_suffix(".html")
     user_data = Path(tempfile.mkdtemp(prefix="teacherdesk_chrome_"))
-    html_path.write_text(_mcq_exam_html(title, question_groups, include_metadata, metadata_position, teacher, header_footer, variant, mode), encoding="utf-8")
+    html_path.write_text(_mcq_exam_html(title, question_groups, include_metadata, metadata_position, teacher, header_footer, variant, mode, paper_style_override), encoding="utf-8")
     try:
         completed = subprocess.run(
             [
@@ -1837,6 +1847,7 @@ def generate_exam(request):
     variants = min(max(int(payload.get("variants") or 1), 1), 10)
     question_count = min(max(int(payload.get("question_count") or 40), 1), 100)
     header_footer = payload.get("header_footer") if isinstance(payload.get("header_footer"), dict) else {}
+    paper_style_override = payload.get("paper_style") if isinstance(payload.get("paper_style"), dict) else {}
 
     questions = _eligible_mcq_questions(review_pool)
     warnings: list[dict[str, object]] = []
@@ -1888,9 +1899,9 @@ def generate_exam(request):
         student_path = output_folder / f"{_safe_filename(title)}{suffix}_Student.pdf"
         teacher_path = output_folder / f"{_safe_filename(title)}{suffix}_Teacher.pdf"
         key_path = output_folder / f"{_safe_filename(title)}{suffix}_Answer_Key.pdf"
-        if not _make_pdf_browser(student_path, f"{title}{suffix}", question_groups, include_metadata, metadata_position, teacher=False, header_footer=header_footer, variant=variant_index, mode=mode):
+        if not _make_pdf_browser(student_path, f"{title}{suffix}", question_groups, include_metadata, metadata_position, teacher=False, header_footer=header_footer, variant=variant_index, mode=mode, paper_style_override=paper_style_override):
             _make_pdf(student_path, f"{title}{suffix}", question_groups, include_metadata, metadata_position, teacher=False, header_footer=header_footer, variant=variant_index, mode=mode)
-        if not _make_pdf_browser(teacher_path, f"{title}{suffix} - Teacher", question_groups, include_metadata, metadata_position, teacher=True, header_footer=header_footer, variant=variant_index, mode=mode):
+        if not _make_pdf_browser(teacher_path, f"{title}{suffix} - Teacher", question_groups, include_metadata, metadata_position, teacher=True, header_footer=header_footer, variant=variant_index, mode=mode, paper_style_override=paper_style_override):
             _make_pdf(teacher_path, f"{title}{suffix} - Teacher", question_groups, include_metadata, metadata_position, teacher=True, header_footer=header_footer, variant=variant_index, mode=mode)
         _make_answer_key_pdf(key_path, f"{title}{suffix}", question_groups, header_footer=header_footer, variant=variant_index, mode=mode)
         variant_payloads.append({"variant": variant_index, "student_pdf": str(student_path), "teacher_pdf": str(teacher_path), "answer_key_pdf": str(key_path), "answer_order": answer_order})

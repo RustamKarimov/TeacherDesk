@@ -6134,6 +6134,9 @@ td,
   padding: 2px 0;
   min-width: 0;
   min-height: 1.8em;
+  display: grid;
+  align-content: start;
+  align-items: start;
 }
 
 .option-preview-grid.layout-two_column,
@@ -6151,6 +6154,27 @@ td,
   margin-right: 5px;
 }
 
+.option-preview-grid.label-inline > span {
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: 5px;
+}
+
+.option-preview-grid.label-inline > span b {
+  grid-column: 1;
+}
+
+.option-preview-grid.label-inline > span .option-body {
+  grid-column: 2;
+}
+
+.option-body {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  align-content: start;
+  justify-items: start;
+}
+
 .option-preview-grid.label-above > span {
   display: grid;
   gap: 4px;
@@ -6161,50 +6185,55 @@ td,
   display: block;
   width: 100%;
   margin: 0;
+}
+
+.option-preview-grid.label-align-left > span b {
+  text-align: left;
+}
+
+.option-preview-grid.label-align-center > span b {
   text-align: center;
 }
 
-.option-preview-grid.align-center > span {
-  text-align: center;
-}
-
-.option-preview-grid.align-center.label-above > span {
-  justify-items: center;
-}
-
-.option-preview-grid.align-right > span {
+.option-preview-grid.label-align-right > span b {
   text-align: right;
 }
 
-.option-preview-grid.align-right.label-above > span {
+.option-preview-grid.align-center .option-body {
+  text-align: center;
+  justify-items: center;
+}
+
+.option-preview-grid.align-right .option-body {
+  text-align: right;
   justify-items: end;
 }
 
-.option-preview-grid.image-place-top > span {
+.option-preview-grid.image-place-top .option-body {
   align-self: start;
 }
 
-.option-preview-grid.image-place-middle > span {
+.option-preview-grid.image-place-middle .option-body {
   align-self: stretch;
   display: flex;
   flex-direction: column;
   justify-content: center;
 }
 
-.option-preview-grid.image-place-bottom > span {
+.option-preview-grid.image-place-bottom .option-body {
   align-self: stretch;
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
 }
 
-.option-preview-grid.image-place-middle.label-above > span,
-.option-preview-grid.image-place-bottom.label-above > span {
+.option-preview-grid.image-place-middle.label-above .option-body,
+.option-preview-grid.image-place-bottom.label-above .option-body {
   display: grid;
   align-content: center;
 }
 
-.option-preview-grid.image-place-bottom.label-above > span {
+.option-preview-grid.image-place-bottom.label-above .option-body {
   align-content: end;
 }
 
@@ -7005,7 +7034,7 @@ td,
 
 .paper-style-panel {
   display: grid;
-  grid-template-columns: minmax(180px, 1fr) repeat(2, minmax(128px, auto));
+  grid-template-columns: minmax(180px, 1fr) minmax(150px, auto) repeat(2, minmax(128px, auto));
   gap: 10px;
   align-items: center;
   border: 1px solid var(--line, #d8e1eb);
@@ -7034,7 +7063,8 @@ td,
   font-weight: 800;
 }
 
-.paper-style-panel input {
+.paper-style-panel input,
+.paper-style-panel select {
   min-height: 34px;
   border: 1px solid var(--line, #d8e1eb);
   border-radius: 8px;
@@ -7502,6 +7532,30 @@ td,
   padding: 0 9px;
 }
 
+.toolbar-number-field {
+  display: inline-grid;
+  grid-template-columns: 54px 34px;
+  gap: 4px;
+  align-items: center;
+}
+
+.toolbar-number-field input {
+  width: 54px;
+  height: 32px;
+  border: 1px solid var(--line, #d8e1eb);
+  border-radius: 8px;
+  background: var(--input-bg, #ffffff);
+  color: var(--text-main, #172033);
+  padding: 0 6px;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.toolbar-number-field button {
+  width: 34px !important;
+  min-width: 34px !important;
+}
+
 .option-image-toolbar button:hover {
   border-color: color-mix(in srgb, var(--teal, #14b8a6) 60%, var(--line, #d8e1eb));
   color: var(--text, #172033);
@@ -7538,6 +7592,27 @@ td,
 .option-gap-control strong {
   color: var(--text-main, #172033);
   text-align: right;
+}
+
+.paper-export-style-panel {
+  display: grid;
+  grid-template-columns: minmax(190px, 1fr) minmax(150px, 0.8fr) minmax(100px, 0.5fr) minmax(130px, 0.55fr);
+  gap: 10px;
+  align-items: end;
+  border: 1px solid var(--line, #d8e1eb);
+  border-radius: 10px;
+  background: var(--panel-bg-soft, #f8fafc);
+  padding: 10px;
+}
+
+.paper-export-style-panel > div strong,
+.paper-export-style-panel > div span {
+  display: block;
+}
+
+.paper-export-style-panel > div span {
+  color: var(--text-soft, #64748b);
+  font-size: 12px;
 }
 
 .option-image-preview {
