@@ -18,7 +18,7 @@ import { API_BASE, readJson } from "../api";
 import type { MCQAsset, MCQAssetListPayload, MCQMetadataPayload, MCQReviewStatus } from "../types";
 import { MCQA4Question, type MCQRenderOption } from "./MCQRenderer";
 
-type EditorStep = "question" | "options" | "metadata";
+type EditorStep = "question" | "metadata";
 type ContentBlockType = "text" | "image" | "table" | "note";
 type ContentBlockDraft = { id: string; block_type: ContentBlockType; text: string; assetId: number | null; tableText: string };
 type OptionDraft = {
@@ -105,8 +105,7 @@ type MCQQuestionDetailPayload = {
 };
 
 const stepLabels: Array<{ value: EditorStep; label: string }> = [
-  { value: "question", label: "Question" },
-  { value: "options", label: "Options" },
+  { value: "question", label: "Question & options" },
   { value: "metadata", label: "Metadata" },
 ];
 
@@ -1007,17 +1006,17 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
     const emptyOptions = options.filter((option) => !optionHasContent(option)).map((option) => option.label);
     if (emptyOptions.length) {
       setError(`Add content for option ${emptyOptions.join(", ")} before saving. Options may contain text, LaTeX, an image, or table cells.`);
-      setStep("options");
+      setStep("question");
       return;
     }
     if (!optionHasContent(options.find((option) => option.label === correctOption) ?? options[0])) {
       setError("The correct answer cannot be empty.");
-      setStep("options");
+      setStep("question");
       return;
     }
     if (!options.some((option) => option.label === correctOption)) {
       setError("Choose a valid correct option.");
-      setStep("options");
+      setStep("question");
       return;
     }
     const normalizedSourceQuestion = normalizeSourceQuestion(sourceQuestionNumber);
@@ -1495,8 +1494,8 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
             </div>
           ) : null}
 
-          {step === "options" ? (
-            <div className="mcq-step-panel">
+          {step === "question" ? (
+            <div className="mcq-step-panel answer-editor-panel">
               <div className="section-intro compact"><strong>Answer choice arrangement</strong><span>Choose how A-D will be arranged on the generated paper.</span></div>
               <div className="option-layout-card-grid compact-option-layouts">{optionLayoutVisuals.map((item) => <button className={`option-layout-card ${optionLayout === item.value ? "active" : ""}`} key={item.value} onClick={() => { setOptionLayout(item.value); setLayoutPreset(item.value === "table" ? "table_options" : item.value === "grid" ? "option_grid" : "standard"); }} type="button"><span className={`option-layout-thumbnail ${item.className}`}><i /><i /><i /><i /></span><strong>{item.title}</strong><small>{item.subtitle}</small></button>)}</div>
               {optionLayout !== "table" ? (
