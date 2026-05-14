@@ -51,6 +51,13 @@ export type MCQOptionImageLayout = {
   table_headers?: boolean;
 };
 
+export type MCQPaperStyle = {
+  font_size_pt?: number;
+  equation_scale?: number;
+  option_gap_px?: number;
+  question_number_weight?: number;
+};
+
 export type MCQA4QuestionProps = {
   questionNumber?: number | string;
   layoutPreset?: string;
@@ -59,6 +66,7 @@ export type MCQA4QuestionProps = {
   options: MCQRenderOption[];
   optionLayout?: string;
   optionImageLayout?: MCQOptionImageLayout;
+  paperStyle?: MCQPaperStyle;
   teacherView?: boolean;
   emptyText?: string;
 };
@@ -216,6 +224,7 @@ export function MCQA4Question({
   options,
   optionLayout = "single",
   optionImageLayout = {},
+  paperStyle = {},
   teacherView = false,
   emptyText = "No question content saved.",
 }: MCQA4QuestionProps) {
@@ -223,9 +232,15 @@ export function MCQA4Question({
   const sizing = optionImageLayout.sizing ?? "individual";
   const labelPlacement = optionImageLayout.label_placement ?? "inline";
   const contentAlign = optionImageLayout.content_align ?? "left";
+  const cardStyle = {
+    "--mcq-paper-font-size": `${Number(paperStyle.font_size_pt ?? 11) * 1.333}px`,
+    "--mcq-equation-scale": `${Number(paperStyle.equation_scale ?? 1)}`,
+    "--mcq-option-gap": `${Number(paperStyle.option_gap_px ?? 6)}px`,
+    "--mcq-question-number-font-weight": Number(paperStyle.question_number_weight ?? 700),
+  } as CSSProperties;
   const sortedOptions = [...options].sort((left, right) => Number(left.order ?? 0) - Number(right.order ?? 0));
   return (
-    <div className={`a4-preview-card mcq-layout-${layoutPreset}`}>
+    <div className={`a4-preview-card mcq-layout-${layoutPreset}`} style={cardStyle}>
       <div className="paper-question-row">
         <span className="paper-question-number">{questionNumber}</span>
         <div className="paper-question-body">

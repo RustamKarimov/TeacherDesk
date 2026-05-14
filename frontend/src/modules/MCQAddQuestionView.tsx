@@ -84,6 +84,12 @@ type MCQQuestionDetailPayload = {
       table_borders?: boolean;
       table_headers?: boolean;
     };
+    paper_style?: {
+      font_size_pt?: number;
+      equation_scale?: number;
+      option_gap_px?: number;
+      question_number_weight?: number;
+    };
   };
   blocks: Array<{ block_type: string; text: string; asset_id: number | null; asset: MCQAsset | null; table_data?: { rows?: string[][] }; order: number }>;
   options: Array<{
@@ -104,11 +110,11 @@ const stepLabels: Array<{ value: EditorStep; label: string }> = [
 const metadataDefaultsKey = "teacherdesk.mcq.lastMetadata";
 
 const optionLayoutVisuals = [
-  { value: "single", title: "Single column", className: "single" },
-  { value: "two_column", title: "Two columns", className: "two-column" },
-  { value: "four_column", title: "Four columns", className: "four-column" },
-  { value: "grid", title: "Image grid", className: "grid" },
-  { value: "table", title: "Table", className: "table" },
+  { value: "single", title: "Single", subtitle: "A-D stacked", className: "single" },
+  { value: "two_column", title: "Two", subtitle: "2 x 2 choices", className: "two-column" },
+  { value: "four_column", title: "Four", subtitle: "A B C D", className: "four-column" },
+  { value: "grid", title: "Image grid", subtitle: "visual answers", className: "grid" },
+  { value: "table", title: "Table", subtitle: "A-D rows", className: "table" },
 ];
 
 const newId = () => Math.random().toString(36).slice(2);
@@ -237,6 +243,9 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
   const [selectedImageWidth, setSelectedImageWidth] = useState<number | null>(null);
   const [selectedImageFit, setSelectedImageFit] = useState<"contain" | "cover" | null>(null);
   const [selectedImageAlign, setSelectedImageAlign] = useState<ImageAlign | null>(null);
+  const [paperFontSizePt, setPaperFontSizePt] = useState(11);
+  const [equationScale, setEquationScale] = useState(1);
+  const [optionGapPx, setOptionGapPx] = useState(6);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -532,6 +541,10 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
     );
     setTableShowBorders(optionImageLayoutSettings?.table_borders !== false);
     setTableShowHeaders(optionImageLayoutSettings?.table_headers !== false);
+    const paperStyleSettings = question.layout_settings?.paper_style;
+    setPaperFontSizePt(Number(paperStyleSettings?.font_size_pt ?? 11));
+    setEquationScale(Number(paperStyleSettings?.equation_scale ?? 1));
+    setOptionGapPx(Number(paperStyleSettings?.option_gap_px ?? 6));
     setSubject(question.subject || "Physics");
     setSyllabus(question.syllabus || "9702");
     setExamCode(question.exam_code || "");
@@ -626,6 +639,10 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
 
   function updateOption(index: number, patch: Partial<OptionDraft>) {
     setOptions((current) => current.map((option, optionIndex) => (optionIndex === index ? { ...option, ...patch } : option)));
+  }
+
+  function updateAllOptionImages(patch: Partial<OptionDraft>) {
+    setOptions((current) => current.map((option) => (option.assetId ? { ...option, ...patch } : option)));
   }
 
   function addOption() {
@@ -842,6 +859,12 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
           content_align: optionContentAlign,
           table_borders: tableShowBorders,
           table_headers: tableShowHeaders,
+        },
+        paper_style: {
+          font_size_pt: paperFontSizePt,
+          equation_scale: equationScale,
+          option_gap_px: optionGapPx,
+          question_number_weight: 700,
         },
       },
       subject,
@@ -1320,6 +1343,11 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
                 <label className="field-stack"><span>Review status</span><select value={reviewStatus} onChange={(event) => setReviewStatus(event.target.value as MCQReviewStatus)}>{metadata?.review_statuses.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
               </div>
               <div className="section-intro compact"><strong>Write the question on the A4 canvas</strong><span>Type normally, insert equations with LaTeX shortcuts, and add images or tables where they belong.</span></div>
+              <div className="paper-style-panel">
+                <div><strong>Paper style</strong><span>Saved with this question and mirrored in previews.</span></div>
+                <label><span>Font</span><input type="number" min={8} max={16} step={0.5} value={paperFontSizePt} onChange={(event) => setPaperFontSizePt(Number(event.target.value || 11))} /><em>pt</em></label>
+                <label><span>Equation</span><input type="number" min={0.75} max={1.4} step={0.05} value={equationScale} onChange={(event) => setEquationScale(Number(event.target.value || 1))} /><em>x</em></label>
+              </div>
               <div className="rich-editor-shell">
                 <div className="rich-editor-toolbar">
                   <button className={richEditor?.isActive("bold") ? "active" : ""} type="button" onClick={() => richEditor?.chain().focus().toggleBold().run()} title="Bold"><Bold size={16} /></button>
@@ -1370,7 +1398,7 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
           {step === "options" ? (
             <div className="mcq-step-panel">
               <div className="section-intro compact"><strong>Answer choice arrangement</strong><span>Choose how A-D will be arranged on the generated paper.</span></div>
-              <div className="option-layout-card-grid compact-option-layouts">{optionLayoutVisuals.map((item) => <button className={`option-layout-card ${optionLayout === item.value ? "active" : ""}`} key={item.value} onClick={() => { setOptionLayout(item.value); setLayoutPreset(item.value === "table" ? "table_options" : item.value === "grid" ? "option_grid" : "standard"); }} type="button"><span className={`option-layout-thumbnail ${item.className}`}><i /><i /><i /><i /></span><strong>{item.title}</strong></button>)}</div>
+              <div className="option-layout-card-grid compact-option-layouts">{optionLayoutVisuals.map((item) => <button className={`option-layout-card ${optionLayout === item.value ? "active" : ""}`} key={item.value} onClick={() => { setOptionLayout(item.value); setLayoutPreset(item.value === "table" ? "table_options" : item.value === "grid" ? "option_grid" : "standard"); }} type="button"><span className={`option-layout-thumbnail ${item.className}`}><i /><i /><i /><i /></span><strong>{item.title}</strong><small>{item.subtitle}</small></button>)}</div>
               {optionLayout !== "table" ? (
                 <div className="option-control-panel">
                   <div className="option-control-group">
@@ -1393,6 +1421,19 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
                       <button className={optionImageSizing === "same_size" ? "active" : ""} type="button" onClick={() => setOptionImageSizing("same_size")} title="Make option images similar size" aria-label="Make option images similar size"><Scaling size={17} /></button>
                     </div>
                   </div>
+                  <div className="option-control-group">
+                    <strong>Apply to all option images</strong>
+                    <div className="option-image-toolbar dense" aria-label="Bulk option image controls">
+                      {[25, 40, 60, 75, 100].map((width) => <button type="button" key={width} onClick={() => updateAllOptionImages({ imageWidth: width })} title={`Set all option images to ${width}%`}>{width}</button>)}
+                      <span className="option-image-toolbar-divider" aria-hidden="true" />
+                      <button type="button" onClick={() => updateAllOptionImages({ imageAlign: "left" })} title="Align all option images left"><AlignLeft size={16} /></button>
+                      <button type="button" onClick={() => updateAllOptionImages({ imageAlign: "center" })} title="Center all option images"><AlignCenter size={16} /></button>
+                      <button type="button" onClick={() => updateAllOptionImages({ imageAlign: "right" })} title="Align all option images right"><AlignRight size={16} /></button>
+                      <span className="option-image-toolbar-divider" aria-hidden="true" />
+                      <button type="button" onClick={() => updateAllOptionImages({ imageHeight: 0, imageOffsetX: 0, imageOffsetY: 0 })} title="Reset all option image frames">Reset</button>
+                    </div>
+                  </div>
+                  <label className="option-gap-control"><span>Option gap</span><input type="range" min={0} max={18} value={optionGapPx} onChange={(event) => setOptionGapPx(Number(event.target.value))} /><strong>{optionGapPx}px</strong></label>
                 </div>
               ) : null}
               {optionLayout === "table" ? (
@@ -1515,6 +1556,7 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
                   table_borders: tableShowBorders,
                   table_headers: tableShowHeaders,
                 }}
+                paperStyle={{ font_size_pt: paperFontSizePt, equation_scale: equationScale, option_gap_px: optionGapPx }}
                 emptyText="Write the question, insert equations, add images, or create a table."
               />
             </div>

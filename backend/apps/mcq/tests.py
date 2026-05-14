@@ -414,6 +414,7 @@ class MCQApiTests(TestCase):
         )
 
         self.assertIn("force.png", html)
-        self.assertIn("math-inline", html)
+        self.assertIn("renderMathInElement", html)
+        self.assertIn("katex", html)
         self.assertIn("print-header", html)
         self.assertIn("page-number-token", html)

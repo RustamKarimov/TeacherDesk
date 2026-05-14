@@ -7,10 +7,12 @@ import re
 import shutil
 import subprocess
 import tempfile
+from functools import lru_cache
 from html import escape
 from pathlib import Path
 from uuid import uuid4
 
+from django.conf import settings
 from django.db.models import Count, Q
 from django.http import FileResponse, JsonResponse
 from django.urls import path
@@ -1430,14 +1432,25 @@ def _asset_uri(asset: MCQImageAsset | None) -> str:
 
 
 def _html_math_text(value: object) -> str:
-    text = escape(str(value or ""))
-    def replace_math(match):
-        latex = match.group(1) or match.group(2) or ""
-        path = _math_image_path(active_library(), latex)
-        if not path:
-            return f"<span class=\"math-render\">{escape(_latex_to_readable(latex))}</span>"
-        return f"<img class=\"math-inline\" src=\"{path.resolve().as_uri()}\" alt=\"{escape(latex)}\">"
-    return re.sub(r"\$\$([^$]+)\$\$|\$([^$]+)\$", replace_math, text).replace("\n", "<br>")
+    return escape(str(value or "")).replace("\n", "<br>")
+
+
+@lru_cache(maxsize=1)
+def _katex_print_assets() -> tuple[str, str, str]:
+    frontend_root = Path(settings.BASE_DIR).parent / "frontend" / "node_modules" / "katex" / "dist"
+    css_path = frontend_root / "katex.min.css"
+    js_path = frontend_root / "katex.min.js"
+    auto_render_path = frontend_root / "contrib" / "auto-render.min.js"
+    try:
+        font_uri = (frontend_root / "fonts").resolve().as_uri() + "/"
+        css = css_path.read_text(encoding="utf-8").replace("url(fonts/", f"url({font_uri}")
+        return (
+            css,
+            js_path.read_text(encoding="utf-8"),
+            auto_render_path.read_text(encoding="utf-8"),
+        )
+    except OSError:
+        return ("", "", "")
 
 
 def _rich_node_html(node: dict[str, object], question: MCQQuestion) -> str:
@@ -1626,14 +1639,27 @@ def _html_header_footer(header_footer: dict[str, object] | None, title: str, var
 
 def _mcq_exam_html(title: str, question_groups: list[tuple[MCQQuestion, list[tuple[str, MCQOption]]]], include_metadata: bool, metadata_position: str, teacher: bool, header_footer: dict[str, object] | None, variant: int, mode: str) -> str:
     header_footer = header_footer or {}
+    katex_css, katex_js, auto_render_js = _katex_print_assets()
     questions = []
     for index, (question, options) in enumerate(question_groups, start=1):
+        question_layout = question.layout_settings if isinstance(question.layout_settings, dict) else {}
+        paper_style = question_layout.get("paper_style", {}) if isinstance(question_layout.get("paper_style", {}), dict) else {}
+        font_size = float(paper_style.get("font_size_pt") or 11)
+        equation_scale = float(paper_style.get("equation_scale") or 1)
+        option_gap = float(paper_style.get("option_gap_px") or 6)
+        number_weight = int(paper_style.get("question_number_weight") or 700)
+        section_style = (
+            f"--mcq-print-font-size:{font_size}pt;"
+            f"--mcq-equation-scale:{equation_scale};"
+            f"--mcq-option-gap:{option_gap}px;"
+            f"--mcq-question-number-font-weight:{number_weight};"
+        )
         metadata = f"{question.exam_code or 'manual'} {question.source_question_number or f'Q{index}'}"
         meta_above = f"<div class=\"source-meta\">{escape(metadata)}</div>" if include_metadata and metadata_position == "above" else ""
         meta_below = f"<div class=\"source-meta\">Source: {escape(metadata)}</div>" if include_metadata and metadata_position == "below" else ""
         teacher_note = f"<div class=\"teacher-preview-note\">Correct answer: {escape(next((label for label, option in options if option.is_correct), 'not set'))}</div>" if teacher else ""
         questions.append(
-            f"<section class=\"mcq-print-question\">{meta_above}<div class=\"paper-question-row\"><span class=\"paper-question-number\">{index}</span><div class=\"paper-question-body\"><div class=\"question-block-preview rich-preview-content\">{_question_content_html(question)}</div>{meta_below}{_options_html(question, options, teacher)}{teacher_note}</div></div></section>"
+            f"<section class=\"mcq-print-question\" style=\"{section_style}\">{meta_above}<div class=\"paper-question-row\"><span class=\"paper-question-number\">{index}</span><div class=\"paper-question-body\"><div class=\"question-block-preview rich-preview-content\">{_question_content_html(question)}</div>{meta_below}{_options_html(question, options, teacher)}{teacher_note}</div></div></section>"
         )
     return f"""<!doctype html>
 <html>
@@ -1641,20 +1667,21 @@ def _mcq_exam_html(title: str, question_groups: list[tuple[MCQQuestion, list[tup
 <meta charset="utf-8">
 <title>{escape(title)}</title>
 <style>
+{katex_css}
 @page {{ size: A4; margin: 18mm; }}
 body {{ margin: 0; background: white; color: #111827; font-family: Calibri, "Segoe UI", Arial, sans-serif; font-size: 11pt; line-height: 1.35; }}
 h1 {{ font-size: 14pt; margin: 0 0 14px; }}
 p {{ margin: 0 0 9px; }}
-.mcq-print-question {{ break-inside: avoid; page-break-inside: avoid; margin: 0 0 18px; }}
+.mcq-print-question {{ break-inside: avoid; page-break-inside: avoid; margin: 0 0 18px; font-size: var(--mcq-print-font-size, 11pt); }}
 .paper-question-row {{ display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: 14px; align-items: start; }}
-.paper-question-number {{ text-align: right; font-weight: 700; }}
+.paper-question-number {{ text-align: right; font-weight: var(--mcq-question-number-font-weight, 700); }}
 .question-block-preview {{ display: grid; gap: 12px; }}
 .rich-preview-content {{ overflow-wrap: anywhere; }}
 .rich-preview-content ul,.rich-preview-content ol {{ margin: 0 0 10px 20px; padding: 0; }}
 .a4-question-image {{ display: block; max-width: 100%; object-fit: contain; margin: 16px auto; border: 0; }}
 .a4-question-image.align-left {{ margin-left: 0; margin-right: auto; }}
 .a4-question-image.align-right {{ margin-left: auto; margin-right: 0; }}
-.option-preview-grid {{ display: grid; gap: 6px; margin-top: 20px; align-items: stretch; }}
+.option-preview-grid {{ display: grid; gap: var(--mcq-option-gap, 6px); margin-top: 20px; align-items: stretch; }}
 .option-preview-grid.layout-two_column,.option-preview-grid.layout-grid {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
 .option-preview-grid.layout-four_column {{ grid-template-columns: repeat(4, minmax(0, 1fr)); }}
 .option-preview-grid > span {{ min-width: 0; min-height: 1.8em; padding: 2px 0; }}
@@ -1689,12 +1716,28 @@ p {{ margin: 0 0 9px; }}
 .page-number-token::after {{ content: counter(page); }}
 .page-count-token::after {{ content: counter(pages); }}
 .source-meta {{ color: #6b7280; font-size: 8pt; margin-bottom: 4px; }}
-.math-inline {{ display: inline-block; height: 1.15em; vertical-align: -0.25em; margin: 0 1px; }}
+.katex {{ font-size: calc(1em * var(--mcq-equation-scale, 1)); }}
+.katex-display {{ margin: 8px 0; }}
 .teacher-preview-note {{ margin-top: 10px; color: #065f46; font-weight: 700; }}
 .correct-word {{ color: #065f46; font-size: 8pt; }}
 </style>
 </head>
-<body>{_html_header_footer(header_footer, title, variant, mode)}<h1>{escape(title)}</h1>{''.join(questions)}</body>
+<body>{_html_header_footer(header_footer, title, variant, mode)}<h1>{escape(title)}</h1>{''.join(questions)}
+<script>{katex_js}</script>
+<script>{auto_render_js}</script>
+<script>
+if (window.renderMathInElement) {{
+  renderMathInElement(document.body, {{
+    delimiters: [
+      {{left: "$$", right: "$$", display: true}},
+      {{left: "$", right: "$", display: false}}
+    ],
+    throwOnError: false,
+    strict: "ignore"
+  }});
+}}
+</script>
+</body>
 </html>"""
 
 

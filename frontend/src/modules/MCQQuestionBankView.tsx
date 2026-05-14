@@ -50,6 +50,12 @@ type MCQQuestionDetailPayload = MCQQuestionRow & {
       label_placement?: "inline" | "above";
       content_align?: "left" | "center" | "right";
     };
+    paper_style?: {
+      font_size_pt?: number;
+      equation_scale?: number;
+      option_gap_px?: number;
+      question_number_weight?: number;
+    };
   };
   blocks: MCQContentBlock[];
   options: MCQOptionDetail[];
@@ -536,6 +542,7 @@ export function MCQQuestionBankView({
               options={renderOptions}
               optionLayout={selectedDetail.option_layout}
               optionImageLayout={optionImageLayout}
+              paperStyle={selectedDetail.layout_settings?.paper_style}
               teacherView={isTeacherView}
             />
           </div>
