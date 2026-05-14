@@ -51,6 +51,7 @@ type MCQQuestionDetailPayload = MCQQuestionRow & {
       label_align?: "left" | "center" | "right";
       content_align?: "left" | "center" | "right";
     };
+    options_embedded?: boolean;
     paper_style?: {
       font_size_pt?: number;
       font_family?: string;
@@ -541,7 +542,7 @@ export function MCQQuestionBankView({
               layoutPreset={selectedDetail.layout_preset}
               richContent={hasRichContent(selectedDetail) && richContent ? richContent : null}
               blocks={selectedDetail.blocks}
-              options={renderOptions}
+              options={selectedDetail.layout_settings?.options_embedded ? [] : renderOptions}
               optionLayout={selectedDetail.option_layout}
               optionImageLayout={optionImageLayout}
               paperStyle={selectedDetail.layout_settings?.paper_style}

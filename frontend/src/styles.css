@@ -7126,6 +7126,82 @@ td,
   font-weight: 800;
 }
 
+.embedded-option-toolbar {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(110px, 0.28fr);
+  gap: 10px;
+  align-items: end;
+  border: 1px solid var(--line, #d8e1eb);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--primary, #14b8a6) 8%, var(--panel-bg));
+  padding: 10px;
+}
+
+.embedded-option-toolbar > div:first-child strong,
+.embedded-option-toolbar > div:first-child span,
+.embedded-option-toolbar label span {
+  display: block;
+}
+
+.embedded-option-toolbar > div:first-child span {
+  color: var(--text-soft, #64748b);
+  font-size: 12px;
+  margin-top: 3px;
+}
+
+.embedded-option-toolbar label {
+  display: grid;
+  gap: 5px;
+  color: var(--text-soft, #64748b);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.embedded-option-toolbar select {
+  min-height: 38px;
+  border: 1px solid var(--line, #d8e1eb);
+  border-radius: 8px;
+  background: var(--input-bg, #ffffff);
+  color: var(--text-main, #172033);
+  padding: 0 10px;
+  font-weight: 800;
+}
+
+.embedded-option-buttons {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
+  gap: 8px;
+}
+
+.embedded-option-buttons button {
+  display: grid;
+  grid-template-columns: 52px 1fr;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+  border: 1px solid var(--line, #d8e1eb);
+  border-radius: 9px;
+  background: var(--input-bg, #ffffff);
+  color: var(--text-main, #172033);
+  padding: 7px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.embedded-option-buttons button.active {
+  border-color: var(--primary, #14b8a6);
+  background: color-mix(in srgb, var(--primary, #14b8a6) 16%, var(--panel-bg));
+}
+
+.embedded-option-buttons .option-layout-thumbnail {
+  height: 34px;
+}
+
+.embedded-option-buttons strong {
+  font-size: 12px;
+}
+
 .rich-editor-toolbar,
 .rich-equation-palette {
   position: relative;

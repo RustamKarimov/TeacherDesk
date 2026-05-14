@@ -244,6 +244,7 @@ export function MCQA4Question({
     "--mcq-question-number-font-weight": Number(paperStyle.question_number_weight ?? 700),
   } as CSSProperties;
   const sortedOptions = [...options].sort((left, right) => Number(left.order ?? 0) - Number(right.order ?? 0));
+  const hasSeparateOptions = sortedOptions.length > 0;
   return (
     <div className={`a4-preview-card mcq-layout-${layoutPreset}`} style={cardStyle}>
       <div className="paper-question-row">
@@ -254,7 +255,7 @@ export function MCQA4Question({
               blocks.length ? blocks.slice().sort((left, right) => Number(left.order ?? 0) - Number(right.order ?? 0)).map((block) => <div className={`preview-content-block ${block.block_type}`} key={block.id ?? `${block.block_type}-${block.order}`}>{renderBlock(block)}</div>) : <p className="muted-preview">{emptyText}</p>
             )}
           </div>
-          {optionLayout === "table" ? renderTableOptions(sortedOptions, teacherView, optionImageLayout) : (
+          {!hasSeparateOptions ? null : optionLayout === "table" ? renderTableOptions(sortedOptions, teacherView, optionImageLayout) : (
             <div className={`option-preview-grid layout-${optionLayout} option-images-${sizing} label-${labelPlacement} label-align-${labelAlign} align-${contentAlign} image-place-${placement}`}>
               {sortedOptions.map((option) => (
                 <span className={teacherView && option.is_correct ? "correct" : ""} key={option.id ?? option.label}>

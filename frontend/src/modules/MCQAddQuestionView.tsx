@@ -38,6 +38,7 @@ type OptionImageSizing = "individual" | "same_height" | "same_width" | "same_siz
 type OptionLabelPlacement = "inline" | "above";
 type OptionLabelAlign = "left" | "center" | "right";
 type OptionContentAlign = "left" | "center" | "right";
+type ExtractedOption = { label: string; text: string };
 type LastMetadataDefaults = {
   subject: string;
   syllabus: string;
@@ -86,6 +87,7 @@ type MCQQuestionDetailPayload = {
       table_borders?: boolean;
       table_headers?: boolean;
     };
+    options_embedded?: boolean;
     paper_style?: {
       font_size_pt?: number;
       font_family?: string;
@@ -232,6 +234,129 @@ function richDocToText(doc: JSONContent): string {
   return lines.map((line) => line.trim()).filter(Boolean).join("\n\n");
 }
 
+function richNodeText(node?: JSONContent): string {
+  if (!node) return "";
+  if (node.type === "text") return node.text ?? "";
+  return (node.content ?? []).map(richNodeText).join(" ").replace(/\s+/g, " ").trim();
+}
+
+function optionLabelFromText(value: string) {
+  const match = value.trim().match(/^([A-Z])(?:[.)\s]|$)/);
+  return match?.[1] ?? "";
+}
+
+function extractOptionsFromRichContent(content: JSONContent): ExtractedOption[] {
+  const found = new Map<string, string>();
+  const capture = (label: string, text: string) => {
+    if (!label || !/^[A-Z]$/.test(label)) return;
+    const clean = text.replace(new RegExp(`^${label}[.)\\s]*`), "").trim();
+    found.set(label, clean);
+  };
+  const walk = (node?: JSONContent) => {
+    if (!node) return;
+    if (node.type === "paragraph") {
+      const text = richNodeText(node);
+      const label = optionLabelFromText(text);
+      if (label) capture(label, text);
+    }
+    if (node.type === "tableRow") {
+      const cells = node.content ?? [];
+      for (let index = 0; index < cells.length; index += 1) {
+        const text = richNodeText(cells[index]);
+        const label = optionLabelFromText(text);
+        if (label) {
+          const nextCellText = richNodeText(cells[index + 1]);
+          capture(label, nextCellText || text);
+        }
+      }
+    }
+    node.content?.forEach(walk);
+  };
+  walk(content);
+  return ["A", "B", "C", "D"].map((label) => ({ label, text: found.get(label) ?? "" }));
+}
+
+function paragraphNode(text = ""): JSONContent {
+  return text ? { type: "paragraph", content: [{ type: "text", text }] } : { type: "paragraph" };
+}
+
+function tableCellNode(text = "", header = false): JSONContent {
+  return { type: header ? "tableHeader" : "tableCell", content: [paragraphNode(text)] };
+}
+
+function tableRowNode(cells: Array<string | { text: string; header?: boolean }>): JSONContent {
+  return {
+    type: "tableRow",
+    content: cells.map((cell) => typeof cell === "string" ? tableCellNode(cell) : tableCellNode(cell.text, cell.header)),
+  };
+}
+
+function optionLayoutContent(layout: string): JSONContent {
+  if (layout === "two_column" || layout === "grid") {
+    return {
+      type: "table",
+      content: [
+        tableRowNode(["A", "", "B", ""]),
+        tableRowNode(["C", "", "D", ""]),
+      ],
+    };
+  }
+  if (layout === "four_column") {
+    return {
+      type: "table",
+      content: [tableRowNode(["A", "", "B", "", "C", "", "D", ""])],
+    };
+  }
+  if (layout === "table") {
+    return {
+      type: "table",
+      content: [
+        tableRowNode(["", { text: "heading 1", header: true }, { text: "heading 2", header: true }, { text: "heading 3", header: true }, { text: "heading 4", header: true }]),
+        tableRowNode(["A", "", "", "", ""]),
+        tableRowNode(["B", "", "", "", ""]),
+        tableRowNode(["C", "", "", "", ""]),
+        tableRowNode(["D", "", "", "", ""]),
+      ],
+    };
+  }
+  return {
+    type: "table",
+    content: [
+      tableRowNode(["A", ""]),
+      tableRowNode(["B", ""]),
+      tableRowNode(["C", ""]),
+      tableRowNode(["D", ""]),
+    ],
+  };
+}
+
+function contentWithEmbeddedOptions(content: JSONContent, options: MCQQuestionDetailPayload["options"], layout: string): JSONContent {
+  if (!options.length) return content;
+  const sorted = options.slice().sort((left, right) => left.order - right.order);
+  const optionCellContent = (option?: MCQQuestionDetailPayload["options"][number]) => {
+    const nodes: JSONContent[] = [];
+    const text = option?.blocks.filter((block) => block.block_type !== "image").map((block) => block.text).filter(Boolean).join("\n") ?? "";
+    nodes.push(paragraphNode(text));
+    option?.blocks.filter((block) => block.block_type === "image" && block.asset?.preview_url).forEach((block) => {
+      nodes.push({ type: "image", attrs: { src: `${API_BASE}${block.asset!.preview_url}`, alt: block.asset!.original_name, width: block.settings?.width ?? 100, "data-fit": block.settings?.fit ?? "contain", "data-align": block.settings?.align ?? "center" } });
+    });
+    return nodes;
+  };
+  const cell = (contentNodes: JSONContent[]) => ({ type: "tableCell", content: contentNodes.length ? contentNodes : [paragraphNode("")] });
+  const labelCell = (label: string) => tableCellNode(label);
+  const row = (items: JSONContent[]) => ({ type: "tableRow", content: items });
+  const optionByLabel = Object.fromEntries(sorted.map((option) => [option.label, option]));
+  const pair = (label: string) => [labelCell(label), cell(optionCellContent(optionByLabel[label] ?? sorted[0]))];
+  const tableRows = layout === "two_column" || layout === "grid"
+    ? [row([...pair("A"), ...pair("B")]), row([...pair("C"), ...pair("D")])]
+    : layout === "four_column"
+      ? [row([...pair("A"), ...pair("B"), ...pair("C"), ...pair("D")])]
+      : sorted.map((option) => row([labelCell(option.label), cell(optionCellContent(option))]));
+  const merged = [...(content.content ?? [])];
+  merged.push(paragraphNode(""), { type: "table", content: tableRows });
+  return { ...content, content: merged };
+}
+
 function OptionTextEditor({
   value,
   label,
@@ -339,6 +464,7 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
   const metadataPickerRef = useRef<HTMLDivElement | null>(null);
   const [editorScale, setEditorScale] = useState(1);
   const [previewScale, setPreviewScale] = useState(1);
+  const extractedOptions = useMemo(() => extractOptionsFromRichContent(richContent), [richContent]);
 
   const visibleSubtopics = useMemo(() => {
     const selectedTopics = metadata?.topics.filter((topic) => topicIds.includes(topic.id)) ?? [];
@@ -563,7 +689,8 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
       if (block.asset) setAssets((current) => (current.some((asset) => asset.id === block.asset?.id) ? current : [block.asset!, ...current]));
     });
     setBlocks(nextBlocks);
-    setRichEditorContent(question.layout_settings?.rich_content || blocksToRichContent(nextBlocks));
+    const loadedRichContent = question.layout_settings?.rich_content || blocksToRichContent(nextBlocks);
+    setRichEditorContent(question.layout_settings?.options_embedded ? loadedRichContent : contentWithEmbeddedOptions(loadedRichContent, question.options, question.option_layout || "single"));
     setCorrectOption(question.options.find((option) => option.is_correct)?.label ?? "A");
     setMarks(question.marks ?? 1);
     setOptions(
@@ -897,23 +1024,10 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
   }
 
   function optionPayloadBlocks() {
-    return Object.fromEntries(options.map((option) => [
+    return Object.fromEntries(extractedOptions.map((option) => [
       option.label,
       [
-        option.text.trim() ? { block_type: "text", text: option.text, order: 1 } : null,
-        option.assetId ? {
-          block_type: "image",
-          asset_id: option.assetId,
-          order: 2,
-          settings: {
-            width: option.imageWidth,
-            height: option.imageHeight,
-            fit: option.imageFit,
-            align: option.imageAlign,
-            offset_x: option.imageOffsetX,
-            offset_y: option.imageOffsetY,
-          },
-        } : null,
+        option.text.trim() ? { block_type: "text", text: option.text, order: 1 } : { block_type: "text", text: `Option ${option.label}`, order: 1 },
       ].filter(Boolean),
     ]));
   }
@@ -926,16 +1040,17 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
 
   function buildQuestionPayload(overwriteDuplicate = false) {
     const normalizedSourceQuestion = normalizeSourceQuestion(sourceQuestionNumber);
+    const structuredOptions = extractedOptions.length ? extractedOptions : defaultOptions.map((option) => ({ label: option.label, text: option.text }));
     return {
       title: buildAutomaticTitle(),
       question_blocks: questionPayloadBlocks(),
       correct_option: correctOption,
       marks,
-      option_labels: options.map((option) => option.label),
-      option_texts: Object.fromEntries(options.map((option) => [option.label, option.text])),
-      option_asset_ids: Object.fromEntries(options.filter((option) => option.assetId).map((option) => [option.label, option.assetId])),
+      option_labels: structuredOptions.map((option) => option.label),
+      option_texts: Object.fromEntries(structuredOptions.map((option) => [option.label, option.text])),
+      option_asset_ids: {},
       option_blocks: optionPayloadBlocks(),
-      option_table: optionTablePayload(),
+      option_table: {},
       duplicate_strategy: overwriteDuplicate ? "overwrite" : "cancel",
       layout_preset: layoutPreset,
       option_layout: optionLayout,
@@ -943,6 +1058,7 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
         rich_content: richContent,
         rich_html: richHtml,
         rich_text: richText || richPlainText(),
+        options_embedded: true,
         option_image_layout: {
           placement: optionImagePlacement,
           sizing: optionImageSizing,
@@ -1003,18 +1119,18 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
       setStep("question");
       return;
     }
-    const emptyOptions = options.filter((option) => !optionHasContent(option)).map((option) => option.label);
+    const emptyOptions = extractedOptions.filter((option) => !option.text.trim()).map((option) => option.label);
     if (emptyOptions.length) {
-      setError(`Add content for option ${emptyOptions.join(", ")} before saving. Options may contain text, LaTeX, an image, or table cells.`);
+      setError(`Add option labels and content for ${emptyOptions.join(", ")} inside the A4 editor before saving. Use the Insert option layout buttons if needed.`);
       setStep("question");
       return;
     }
-    if (!optionHasContent(options.find((option) => option.label === correctOption) ?? options[0])) {
+    if (!extractedOptions.some((option) => option.label === correctOption && option.text.trim())) {
       setError("The correct answer cannot be empty.");
       setStep("question");
       return;
     }
-    if (!options.some((option) => option.label === correctOption)) {
+    if (!extractedOptions.some((option) => option.label === correctOption)) {
       setError("Choose a valid correct option.");
       setStep("question");
       return;
@@ -1144,6 +1260,16 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
   function applyNumbering(type: string) {
     richEditor?.chain().focus().toggleOrderedList().updateAttributes("orderedList", { type }).run();
     setOpenEditorMenu(null);
+  }
+
+  function insertOptionLayout(layout: string) {
+    setOptionLayout(layout);
+    setLayoutPreset(layout === "table" ? "table_options" : layout === "grid" ? "option_grid" : "standard");
+    richEditor?.chain().focus().insertContent([
+      paragraphNode(""),
+      optionLayoutContent(layout),
+      paragraphNode(""),
+    ]).run();
   }
 
   async function uploadEditorImage(file: File | null) {
@@ -1447,6 +1573,21 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
                 <label><span>Font</span><input type="number" min={8} max={18} step={0.5} value={paperFontSizePt} onChange={(event) => setPaperFontSizePt(Number(event.target.value || 11))} /><em>pt</em></label>
                 <label><span>Equation</span><input type="number" min={0.75} max={1.4} step={0.05} value={equationScale} onChange={(event) => setEquationScale(Number(event.target.value || 1))} /><em>x</em></label>
               </div>
+              <div className="embedded-option-toolbar">
+                <div>
+                  <strong>Answer options inside the A4 editor</strong>
+                  <span>Insert an A-D structure, then type directly in the white page. TeacherDesk reads A-D from the editor for answer keys and shuffling rules.</span>
+                </div>
+                <label><span>Correct</span><select value={correctOption} onChange={(event) => setCorrectOption(event.target.value)}>{["A", "B", "C", "D"].map((label) => <option key={label} value={label}>{label}</option>)}</select></label>
+                <div className="embedded-option-buttons">
+                  {optionLayoutVisuals.map((item) => (
+                    <button className={optionLayout === item.value ? "active" : ""} key={item.value} onClick={() => insertOptionLayout(item.value)} type="button">
+                      <span className={`option-layout-thumbnail ${item.className}`}><i /><i /><i /><i /></span>
+                      <strong>{item.title}</strong>
+                    </button>
+                  ))}
+                </div>
+              </div>
               <div className="rich-editor-shell">
                 <div className="rich-editor-toolbar">
                   <button className={richEditor?.isActive("bold") ? "active" : ""} type="button" onClick={() => richEditor?.chain().focus().toggleBold().run()} title="Bold"><Bold size={16} /></button>
@@ -1494,7 +1635,7 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
             </div>
           ) : null}
 
-          {step === "question" ? (
+          {false ? (
             <div className="mcq-step-panel answer-editor-panel">
               <div className="section-intro compact"><strong>Answer choice arrangement</strong><span>Choose how A-D will be arranged on the generated paper.</span></div>
               <div className="option-layout-card-grid compact-option-layouts">{optionLayoutVisuals.map((item) => <button className={`option-layout-card ${optionLayout === item.value ? "active" : ""}`} key={item.value} onClick={() => { setOptionLayout(item.value); setLayoutPreset(item.value === "table" ? "table_options" : item.value === "grid" ? "option_grid" : "standard"); }} type="button"><span className={`option-layout-thumbnail ${item.className}`}><i /><i /><i /><i /></span><strong>{item.title}</strong><small>{item.subtitle}</small></button>)}</div>
@@ -1689,7 +1830,7 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
                 questionNumber={1}
                 layoutPreset={layoutPreset}
                 richContent={richContentHasContent() ? richContent : null}
-                options={previewOptions()}
+                options={[]}
                 optionLayout={optionLayout}
                 optionImageLayout={{
                   placement: optionImagePlacement,

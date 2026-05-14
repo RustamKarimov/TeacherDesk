@@ -1388,8 +1388,9 @@ def _make_pdf(path: Path, title: str, question_groups: list[tuple[MCQQuestion, l
         question_parts.append(content_table)
         if include_metadata and metadata_position == "below":
             question_parts.append(Paragraph(f"Source: {_paragraph_text(metadata)}", styles["meta"]))
-        question_parts.append(Spacer(1, 5))
-        question_parts.append(_options_flowable(question, options, styles, teacher))
+        if not (isinstance(question.layout_settings, dict) and question.layout_settings.get("options_embedded")):
+            question_parts.append(Spacer(1, 5))
+            question_parts.append(_options_flowable(question, options, styles, teacher))
         question_parts.append(Spacer(1, 12))
         story.append(KeepTogether(question_parts))
     doc.build(story, canvasmaker=lambda *args, **kwargs: HeaderFooterCanvas(*args, header_footer=header_footer, title=title, variant=variant, mode=mode, **kwargs))
@@ -1594,6 +1595,8 @@ def _table_options_html(question: MCQQuestion, options: list[tuple[str, MCQOptio
 
 def _options_html(question: MCQQuestion, options: list[tuple[str, MCQOption]], teacher: bool) -> str:
     layout = question.layout_settings.get("option_image_layout", {}) if isinstance(question.layout_settings, dict) else {}
+    if isinstance(question.layout_settings, dict) and question.layout_settings.get("options_embedded"):
+        return ""
     if question.option_layout == MCQQuestion.OptionLayout.TABLE:
         return _table_options_html(question, options, teacher, layout)
     placement = str(layout.get("placement") or "top")
@@ -1886,7 +1889,8 @@ def generate_exam(request):
         answer_order = []
         for question in variant_questions:
             options = list(question.options.all())
-            if shuffle_options:
+            options_embedded = isinstance(question.layout_settings, dict) and question.layout_settings.get("options_embedded")
+            if shuffle_options and not options_embedded:
                 random.shuffle(options)
             display_options = [(chr(65 + option_index), option) for option_index, option in enumerate(options)]
             question_groups.append((question, display_options))
