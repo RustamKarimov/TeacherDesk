@@ -4,6 +4,8 @@ import mimetypes
 import os
 import random
 import re
+import shutil
+import subprocess
 import tempfile
 from html import escape
 from pathlib import Path
@@ -1405,6 +1407,332 @@ def _make_answer_key_pdf(path: Path, title: str, question_groups: list[tuple[MCQ
     doc.build(story, canvasmaker=lambda *args, **kwargs: HeaderFooterCanvas(*args, header_footer=header_footer, title=title, variant=variant, mode=mode, **kwargs))
 
 
+def _browser_executable() -> str | None:
+    candidates = [
+        os.environ.get("TEACHERDESK_BROWSER_PATH", ""),
+        r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+        r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+        r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
+        r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+        shutil.which("chrome") or "",
+        shutil.which("msedge") or "",
+    ]
+    return next((path for path in candidates if path and Path(path).exists()), None)
+
+
+def _asset_uri(asset: MCQImageAsset | None) -> str:
+    if not asset:
+        return ""
+    path = _asset_disk_path(asset)
+    if not path.exists():
+        return ""
+    return path.resolve().as_uri()
+
+
+def _html_math_text(value: object) -> str:
+    text = escape(str(value or ""))
+    def replace_math(match):
+        latex = match.group(1) or match.group(2) or ""
+        path = _math_image_path(active_library(), latex)
+        if not path:
+            return f"<span class=\"math-render\">{escape(_latex_to_readable(latex))}</span>"
+        return f"<img class=\"math-inline\" src=\"{path.resolve().as_uri()}\" alt=\"{escape(latex)}\">"
+    return re.sub(r"\$\$([^$]+)\$\$|\$([^$]+)\$", replace_math, text).replace("\n", "<br>")
+
+
+def _rich_node_html(node: dict[str, object], question: MCQQuestion) -> str:
+    node_type = node.get("type")
+    content = node.get("content") if isinstance(node.get("content"), list) else []
+    children = "".join(_rich_node_html(child, question) for child in content if isinstance(child, dict))
+    attrs = node.get("attrs") if isinstance(node.get("attrs"), dict) else {}
+    align = str(attrs.get("textAlign") or "")
+    style = f" style=\"text-align:{escape(align)}\"" if align in {"left", "center", "right"} else ""
+    if node_type == "doc":
+        return children
+    if node_type == "paragraph":
+        return f"<p{style}>{children}</p>"
+    if node_type == "heading":
+        level = min(max(int(attrs.get("level") or 2), 1), 3)
+        return f"<h{level}{style}>{children}</h{level}>"
+    if node_type == "bulletList":
+        return f"<ul>{children}</ul>"
+    if node_type == "orderedList":
+        list_type = str(attrs.get("type") or "1")
+        css_type = {"a": "lower-alpha", "A": "upper-alpha", "i": "lower-roman", "I": "upper-roman"}.get(list_type, "decimal")
+        return f"<ol style=\"list-style-type:{css_type}\">{children}</ol>"
+    if node_type == "listItem":
+        return f"<li>{children}</li>"
+    if node_type == "hardBreak":
+        return "<br>"
+    if node_type == "image":
+        asset = _rich_src_asset(attrs.get("src"), question.library)
+        src = _asset_uri(asset)
+        if not src:
+            return ""
+        width = attrs.get("width") or 100
+        width_text = str(width)
+        width_css = width_text if width_text.endswith("%") or width_text.endswith("px") else f"{width_text}%"
+        fit = "cover" if attrs.get("data-fit") == "cover" else "contain"
+        image_align = attrs.get("data-align") if attrs.get("data-align") in {"left", "right"} else "center"
+        return f"<img class=\"a4-question-image fit-{fit} align-{image_align}\" style=\"width:{escape(width_css)}\" src=\"{src}\" alt=\"{escape(str(attrs.get('alt') or 'Question image'))}\">"
+    if node_type == "table":
+        return f"<table class=\"mcq-preview-table rich-table\"><tbody>{children}</tbody></table>"
+    if node_type == "tableRow":
+        return f"<tr>{children}</tr>"
+    if node_type == "tableHeader":
+        return f"<th>{children}</th>"
+    if node_type == "tableCell":
+        return f"<td>{children}</td>"
+    if node_type == "text":
+        text = _html_math_text(node.get("text") or "")
+        marks = node.get("marks") if isinstance(node.get("marks"), list) else []
+        if any(isinstance(mark, dict) and mark.get("type") == "bold" for mark in marks):
+            text = f"<strong>{text}</strong>"
+        if any(isinstance(mark, dict) and mark.get("type") == "italic" for mark in marks):
+            text = f"<em>{text}</em>"
+        if any(isinstance(mark, dict) and mark.get("type") == "underline" for mark in marks):
+            text = f"<u>{text}</u>"
+        return f"<span>{text}</span>"
+    return children
+
+
+def _question_content_html(question: MCQQuestion) -> str:
+    if isinstance(question.content_json, dict) and question.content_json.get("content"):
+        return _rich_node_html(question.content_json, question)
+    parts = []
+    for block in question.blocks.all():
+        if block.block_type == MCQQuestionBlock.BlockType.IMAGE:
+            src = _asset_uri(block.asset)
+            if src:
+                width = block.settings.get("width", 100) if isinstance(block.settings, dict) else 100
+                parts.append(f"<img class=\"a4-question-image\" style=\"width:{escape(str(width))}%\" src=\"{src}\" alt=\"{escape(block.asset.original_name if block.asset else 'Question image')}\">")
+        elif block.block_type == MCQQuestionBlock.BlockType.TABLE:
+            rows = block.table_data.get("rows", []) if isinstance(block.table_data, dict) else []
+            cells = "".join("<tr>" + "".join(f"<td>{_html_math_text(cell)}</td>" for cell in row) + "</tr>" for row in rows)
+            parts.append(f"<table class=\"mcq-preview-table\"><tbody>{cells}</tbody></table>")
+        elif block.text:
+            parts.append(f"<p>{_html_math_text(block.text)}</p>")
+    return "".join(parts) or "<p>No question content saved.</p>"
+
+
+def _option_html(option: MCQOption, display_label: str, teacher: bool, layout: dict[str, object]) -> str:
+    placement = str(layout.get("placement") or "top")
+    label_placement = str(layout.get("label_placement") or "inline")
+    text_blocks = [block for block in option.blocks.all() if block.text]
+    image_blocks = [block for block in option.blocks.all() if block.asset_id]
+    text = option.content_text or " ".join(block.text for block in text_blocks)
+    label = f"<b>{escape(display_label)}{'.' if label_placement == 'inline' else ''}</b>"
+    if teacher and option.is_correct:
+        label += " <span class=\"correct-word\">correct</span>"
+    image_html = ""
+    for block in image_blocks:
+        settings = block.settings if isinstance(block.settings, dict) else {}
+        src = _asset_uri(block.asset)
+        if not src:
+            continue
+        width = settings.get("width", 100)
+        height = settings.get("height", 0)
+        fit = "cover" if settings.get("fit") == "cover" else "contain"
+        align = settings.get("align") if settings.get("align") in {"left", "right"} else "center"
+        offset_x = settings.get("offset_x", 0)
+        offset_y = settings.get("offset_y", 0)
+        style = f"width:{escape(str(width))}%;"
+        if height:
+            style += f"height:{escape(str(height))}px;"
+        if offset_x or offset_y:
+            style += f"transform:translate({escape(str(offset_x))}px,{escape(str(offset_y))}px);"
+        image_html += f"<img class=\"a4-option-image fit-{fit} align-{align}\" style=\"{style}\" src=\"{src}\" alt=\"{escape(block.asset.original_name if block.asset else 'Option image')}\">"
+    text_html = f"<span class=\"option-text-fragment\">{_html_math_text(text)}</span>" if text else ""
+    if placement == "middle" and image_html:
+        content = f"<span class=\"option-media-middle\">{image_html}<span>{text_html}</span></span>"
+    else:
+        content = f"{image_html if placement == 'top' else ''}{text_html}{image_html if placement == 'bottom' else ''}"
+    if not content:
+        content = "<span class=\"option-text-fragment\">Answer option</span>"
+    return f"<span>{label}{content}</span>"
+
+
+def _table_options_html(question: MCQQuestion, options: list[tuple[str, MCQOption]], teacher: bool, layout: dict[str, object]) -> str:
+    first = next((option for _, option in options if option.layout_settings.get("table_cells")), None)
+    headers = first.layout_settings.get("table_headers", []) if first else []
+    show_headers = layout.get("table_headers", True)
+    show_borders = layout.get("table_borders", True)
+    head = ""
+    if show_headers:
+        head = "<thead><tr><th></th>" + "".join(f"<th>{_html_math_text(header)}</th>" for header in headers) + "</tr></thead>"
+    rows = []
+    for display_label, option in options:
+        asset_ids = option.layout_settings.get("table_cell_asset_ids", [])
+        cells_html = []
+        for index, value in enumerate(option.layout_settings.get("table_cells", [])):
+            cell_parts = []
+            if str(value).strip():
+                cell_parts.append(f"<span>{_html_math_text(value)}</span>")
+            if isinstance(asset_ids, list) and index < len(asset_ids) and asset_ids[index]:
+                asset = MCQImageAsset.objects.filter(id=asset_ids[index], library=question.library).first()
+                src = _asset_uri(asset)
+                if src:
+                    cell_parts.append(f"<img src=\"{src}\" alt=\"{escape(asset.original_name if asset else 'Table cell image')}\">")
+            cells_html.append(f"<td><span class=\"mcq-table-cell-content\">{''.join(cell_parts)}</span></td>")
+        cells = "".join(cells_html)
+        rows.append(f"<tr class=\"{'correct' if teacher and option.is_correct else ''}\"><th>{escape(display_label)}</th>{cells}</tr>")
+    return f"<table class=\"mcq-answer-table-preview {'no-borders' if not show_borders else ''} {'hide-headers' if not show_headers else ''}\">{head}<tbody>{''.join(rows)}</tbody></table>"
+
+
+def _options_html(question: MCQQuestion, options: list[tuple[str, MCQOption]], teacher: bool) -> str:
+    layout = question.layout_settings.get("option_image_layout", {}) if isinstance(question.layout_settings, dict) else {}
+    if question.option_layout == MCQQuestion.OptionLayout.TABLE:
+        return _table_options_html(question, options, teacher, layout)
+    placement = str(layout.get("placement") or "top")
+    sizing = str(layout.get("sizing") or "individual")
+    label = str(layout.get("label_placement") or "inline")
+    align = str(layout.get("content_align") or "left")
+    option_items = "".join(_option_html(option, display_label, teacher, layout) for display_label, option in options)
+    return f"<div class=\"option-preview-grid layout-{escape(question.option_layout)} option-images-{escape(sizing)} label-{escape(label)} align-{escape(align)} image-place-{escape(placement)}\">{option_items}</div>"
+
+
+def _html_tokens(value: object, title: str, variant: int, mode: str) -> str:
+    token_values = {
+        "title": title,
+        "variant": str(variant),
+        "mode": mode,
+        "date": timezone.localdate().isoformat(),
+    }
+
+    def replace(match):
+        token = match.group(1)
+        if token == "page":
+            return "<span class=\"page-number-token\"></span>"
+        if token == "pages":
+            return "<span class=\"page-count-token\"></span>"
+        return escape(token_values.get(token, match.group(0)))
+
+    return re.sub(r"\{(title|variant|mode|date|page|pages)\}", replace, str(value or ""))
+
+
+def _html_header_footer(header_footer: dict[str, object] | None, title: str, variant: int, mode: str) -> str:
+    header_footer = header_footer or {}
+    sections = []
+    for area in ("header", "footer"):
+        config = header_footer.get(area, {}) if isinstance(header_footer.get(area, {}), dict) else {}
+        cells = []
+        for position in ("left", "center", "right"):
+            text = _html_tokens(config.get(position, ""), title, variant, mode)
+            cells.append(f"<span class=\"print-{position}\">{text}</span>")
+        if any(config.get(position) for position in ("left", "center", "right")):
+            sections.append(f"<div class=\"print-{area}\">{''.join(cells)}</div>")
+    return "".join(sections)
+
+
+def _mcq_exam_html(title: str, question_groups: list[tuple[MCQQuestion, list[tuple[str, MCQOption]]]], include_metadata: bool, metadata_position: str, teacher: bool, header_footer: dict[str, object] | None, variant: int, mode: str) -> str:
+    header_footer = header_footer or {}
+    questions = []
+    for index, (question, options) in enumerate(question_groups, start=1):
+        metadata = f"{question.exam_code or 'manual'} {question.source_question_number or f'Q{index}'}"
+        meta_above = f"<div class=\"source-meta\">{escape(metadata)}</div>" if include_metadata and metadata_position == "above" else ""
+        meta_below = f"<div class=\"source-meta\">Source: {escape(metadata)}</div>" if include_metadata and metadata_position == "below" else ""
+        teacher_note = f"<div class=\"teacher-preview-note\">Correct answer: {escape(next((label for label, option in options if option.is_correct), 'not set'))}</div>" if teacher else ""
+        questions.append(
+            f"<section class=\"mcq-print-question\">{meta_above}<div class=\"paper-question-row\"><span class=\"paper-question-number\">{index}</span><div class=\"paper-question-body\"><div class=\"question-block-preview rich-preview-content\">{_question_content_html(question)}</div>{meta_below}{_options_html(question, options, teacher)}{teacher_note}</div></div></section>"
+        )
+    return f"""<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>{escape(title)}</title>
+<style>
+@page {{ size: A4; margin: 18mm; }}
+body {{ margin: 0; background: white; color: #111827; font-family: Calibri, "Segoe UI", Arial, sans-serif; font-size: 11pt; line-height: 1.35; }}
+h1 {{ font-size: 14pt; margin: 0 0 14px; }}
+p {{ margin: 0 0 9px; }}
+.mcq-print-question {{ break-inside: avoid; page-break-inside: avoid; margin: 0 0 18px; }}
+.paper-question-row {{ display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: 14px; align-items: start; }}
+.paper-question-number {{ text-align: right; font-weight: 700; }}
+.question-block-preview {{ display: grid; gap: 12px; }}
+.rich-preview-content {{ overflow-wrap: anywhere; }}
+.rich-preview-content ul,.rich-preview-content ol {{ margin: 0 0 10px 20px; padding: 0; }}
+.a4-question-image {{ display: block; max-width: 100%; object-fit: contain; margin: 16px auto; border: 0; }}
+.a4-question-image.align-left {{ margin-left: 0; margin-right: auto; }}
+.a4-question-image.align-right {{ margin-left: auto; margin-right: 0; }}
+.option-preview-grid {{ display: grid; gap: 6px; margin-top: 20px; align-items: stretch; }}
+.option-preview-grid.layout-two_column,.option-preview-grid.layout-grid {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
+.option-preview-grid.layout-four_column {{ grid-template-columns: repeat(4, minmax(0, 1fr)); }}
+.option-preview-grid > span {{ min-width: 0; min-height: 1.8em; padding: 2px 0; }}
+.option-preview-grid > span b,.option-text-fragment {{ display: inline-block; margin-right: 5px; }}
+.option-preview-grid.label-above > span {{ display: grid; gap: 4px; justify-items: start; }}
+.option-preview-grid.label-above > span b {{ display: block; width: 100%; margin: 0; text-align: center; }}
+.option-preview-grid.align-center > span {{ text-align: center; }}
+.option-preview-grid.align-center.label-above > span {{ justify-items: center; }}
+.option-preview-grid.align-right > span {{ text-align: right; }}
+.option-preview-grid.align-right.label-above > span {{ justify-items: end; }}
+.option-preview-grid.image-place-middle > span {{ display: flex; flex-direction: column; justify-content: center; }}
+.option-preview-grid.image-place-bottom > span {{ display: flex; flex-direction: column; justify-content: flex-end; }}
+.option-media-middle {{ display: inline-flex; align-items: center; gap: 8px; max-width: 100%; vertical-align: middle; }}
+.a4-option-image {{ display: block; max-width: none; object-fit: contain; margin: 6px auto; }}
+.a4-option-image.align-left {{ margin-left: 0; margin-right: auto; }}
+.a4-option-image.align-right {{ margin-left: auto; margin-right: 0; }}
+.option-media-middle .a4-option-image {{ margin: 0; max-width: 45%; }}
+.option-preview-grid.option-images-same_height .a4-option-image {{ width: auto !important; height: 72px !important; }}
+.option-preview-grid.option-images-same_width .a4-option-image {{ width: 100% !important; height: auto; }}
+.option-preview-grid.option-images-same_size .a4-option-image {{ width: 100% !important; height: 86px !important; object-fit: contain; }}
+.mcq-preview-table,.mcq-answer-table-preview {{ width: 100%; border-collapse: collapse; margin: 8px 0; }}
+.mcq-preview-table th,.mcq-preview-table td,.mcq-answer-table-preview th,.mcq-answer-table-preview td {{ border: 1px solid #111827; padding: 7px 8px; text-align: center; vertical-align: middle; }}
+.mcq-answer-table-preview.no-borders th,.mcq-answer-table-preview.no-borders td {{ border-color: transparent; }}
+.mcq-table-cell-content {{ display: grid; gap: 4px; justify-items: center; align-items: center; }}
+.mcq-table-cell-content img {{ display: block; max-width: 100%; max-height: 80px; object-fit: contain; }}
+.print-header,.print-footer {{ position: fixed; left: 0; right: 0; display: grid; grid-template-columns: 1fr 1fr 1fr; color: #4b5563; font-size: 8pt; z-index: 2; }}
+.print-header {{ top: -10mm; }}
+.print-footer {{ bottom: -10mm; }}
+.print-left {{ text-align: left; }}
+.print-center {{ text-align: center; }}
+.print-right {{ text-align: right; }}
+.page-number-token::after {{ content: counter(page); }}
+.page-count-token::after {{ content: counter(pages); }}
+.source-meta {{ color: #6b7280; font-size: 8pt; margin-bottom: 4px; }}
+.math-inline {{ display: inline-block; height: 1.15em; vertical-align: -0.25em; margin: 0 1px; }}
+.teacher-preview-note {{ margin-top: 10px; color: #065f46; font-weight: 700; }}
+.correct-word {{ color: #065f46; font-size: 8pt; }}
+</style>
+</head>
+<body>{_html_header_footer(header_footer, title, variant, mode)}<h1>{escape(title)}</h1>{''.join(questions)}</body>
+</html>"""
+
+
+def _make_pdf_browser(path: Path, title: str, question_groups: list[tuple[MCQQuestion, list[tuple[str, MCQOption]]]], include_metadata: bool, metadata_position: str, teacher: bool = False, header_footer: dict[str, object] | None = None, variant: int = 1, mode: str = "") -> bool:
+    browser = _browser_executable()
+    if not browser:
+        return False
+    path = path.resolve()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    html_path = path.with_suffix(".html")
+    user_data = Path(tempfile.mkdtemp(prefix="teacherdesk_chrome_"))
+    html_path.write_text(_mcq_exam_html(title, question_groups, include_metadata, metadata_position, teacher, header_footer, variant, mode), encoding="utf-8")
+    try:
+        completed = subprocess.run(
+            [
+                browser,
+                "--headless",
+                "--disable-gpu",
+                "--disable-gpu-sandbox",
+                "--disable-software-rasterizer",
+                "--disable-dev-shm-usage",
+                "--no-sandbox",
+                "--no-first-run",
+                "--disable-extensions",
+                f"--user-data-dir={user_data}",
+                "--print-to-pdf-no-header",
+                f"--print-to-pdf={path}",
+                html_path.resolve().as_uri(),
+            ],
+            check=False,
+            capture_output=True,
+            timeout=90,
+        )
+        return completed.returncode == 0 and path.exists() and path.stat().st_size > 0
+    finally:
+        shutil.rmtree(user_data, ignore_errors=True)
+
+
 def _eligible_mcq_questions(review_pool: str):
     queryset = MCQQuestion.objects.filter(library=active_library()).prefetch_related("topics", "tags", "blocks", "blocks__asset", "options", "options__blocks", "options__blocks__asset")
     if review_pool != "all":
@@ -1517,8 +1845,10 @@ def generate_exam(request):
         student_path = output_folder / f"{_safe_filename(title)}{suffix}_Student.pdf"
         teacher_path = output_folder / f"{_safe_filename(title)}{suffix}_Teacher.pdf"
         key_path = output_folder / f"{_safe_filename(title)}{suffix}_Answer_Key.pdf"
-        _make_pdf(student_path, f"{title}{suffix}", question_groups, include_metadata, metadata_position, teacher=False, header_footer=header_footer, variant=variant_index, mode=mode)
-        _make_pdf(teacher_path, f"{title}{suffix} - Teacher", question_groups, include_metadata, metadata_position, teacher=True, header_footer=header_footer, variant=variant_index, mode=mode)
+        if not _make_pdf_browser(student_path, f"{title}{suffix}", question_groups, include_metadata, metadata_position, teacher=False, header_footer=header_footer, variant=variant_index, mode=mode):
+            _make_pdf(student_path, f"{title}{suffix}", question_groups, include_metadata, metadata_position, teacher=False, header_footer=header_footer, variant=variant_index, mode=mode)
+        if not _make_pdf_browser(teacher_path, f"{title}{suffix} - Teacher", question_groups, include_metadata, metadata_position, teacher=True, header_footer=header_footer, variant=variant_index, mode=mode):
+            _make_pdf(teacher_path, f"{title}{suffix} - Teacher", question_groups, include_metadata, metadata_position, teacher=True, header_footer=header_footer, variant=variant_index, mode=mode)
         _make_answer_key_pdf(key_path, f"{title}{suffix}", question_groups, header_footer=header_footer, variant=variant_index, mode=mode)
         variant_payloads.append({"variant": variant_index, "student_pdf": str(student_path), "teacher_pdf": str(teacher_path), "answer_key_pdf": str(key_path), "answer_order": answer_order})
     first = variant_payloads[0]

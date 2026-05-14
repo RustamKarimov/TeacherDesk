@@ -9,6 +9,7 @@ from django.test import Client, TestCase
 
 from apps.libraries.models import Library
 
+from .urls import _mcq_exam_html
 from .models import MCQImageAsset, MCQOption, MCQOptionBlock, MCQQuestion, MCQQuestionBlock, MCQTag, MCQTopic
 
 
@@ -375,3 +376,44 @@ class MCQApiTests(TestCase):
         self.assertEqual(option.layout_settings["table_headers"][0], "acceleration")
         self.assertEqual(option.layout_settings["table_cells"], ["vector", "vector", "scalar", "scalar"])
         self.assertEqual(option.blocks.first().text, "vector | vector | scalar | scalar")
+
+    def test_browser_exam_html_contains_rich_content_images_math_and_header_footer(self):
+        image_path = self.test_root / "force.png"
+        image_path.write_bytes(b"\x89PNG\r\n\x1a\nfake-question-image")
+        asset = MCQImageAsset.objects.create(
+            library=self.library,
+            asset_type=MCQImageAsset.AssetType.QUESTION,
+            original_name="force.png",
+            file_path=str(image_path),
+            file_size=image_path.stat().st_size,
+        )
+        question = MCQQuestion.objects.create(
+            library=self.library,
+            title="Rich printable",
+            content_json={
+                "type": "doc",
+                "content": [
+                    {"type": "paragraph", "content": [{"type": "text", "text": "Use $F = ma$."}]},
+                    {"type": "image", "attrs": {"src": f"/api/mcq/assets/{asset.id}/file/", "width": 40, "data-align": "center"}},
+                ],
+            },
+            content_text="Use F = ma.",
+            option_layout="single",
+        )
+        option = MCQOption.objects.create(question=question, label="A", is_correct=True, content_text="$2N$", order=1)
+
+        html = _mcq_exam_html(
+            "Test MCQ",
+            [(question, [("A", option)])],
+            include_metadata=True,
+            metadata_position="above",
+            teacher=True,
+            header_footer={"header": {"left": "{title}"}, "footer": {"right": "Page {page}"}},
+            variant=1,
+            mode="manual",
+        )
+
+        self.assertIn("force.png", html)
+        self.assertIn("math-inline", html)
+        self.assertIn("print-header", html)
+        self.assertIn("page-number-token", html)

@@ -5986,9 +5986,9 @@ td,
   box-shadow: 0 16px 42px rgba(0, 0, 0, 0.18);
   padding: 64px 72px;
   overflow: hidden;
-  font-family: Calibri, "Segoe UI", Arial, sans-serif;
-  font-size: 14.67px;
-  line-height: 1.35;
+  font-family: var(--mcq-paper-font-family, Calibri, "Segoe UI", Arial, sans-serif);
+  font-size: var(--mcq-paper-font-size, 14.67px);
+  line-height: var(--mcq-paper-line-height, 1.35);
 }
 
 .a4-preview-viewport {
@@ -6109,9 +6109,9 @@ td,
   display: block;
   background: transparent;
   color: #111827;
-  font-family: inherit;
-  font-size: inherit;
-  font-weight: 700;
+  font-family: var(--mcq-question-number-font-family, inherit);
+  font-size: var(--mcq-question-number-font-size, inherit);
+  font-weight: var(--mcq-question-number-font-weight, 700);
   line-height: inherit;
   margin: 0;
   text-align: right;
@@ -6249,7 +6249,7 @@ td,
 }
 
 .math-render .katex {
-  font-size: 1em;
+  font-size: var(--mcq-equation-scale, 1em);
 }
 
 .mcq-preview-table {

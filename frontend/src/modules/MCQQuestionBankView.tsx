@@ -6,6 +6,7 @@ import "katex/dist/katex.min.css";
 
 import { API_BASE, readJson } from "../api";
 import type { MCQAsset, MCQMetadataPayload, MCQQuestionListPayload, MCQQuestionRow, MCQReviewStatus } from "../types";
+import { MCQA4Question, type MCQRenderOption } from "./MCQRenderer";
 
 type MCQContentBlock = {
   id: number;
@@ -517,40 +518,29 @@ export function MCQQuestionBankView({
   function renderSelectedQuestionPreview() {
     if (!selected || !selectedDetail) return null;
     const optionImageLayout = selectedDetail.layout_settings?.option_image_layout ?? {};
-    const placement = optionImageLayout.placement ?? "top";
-    const sizing = optionImageLayout.sizing ?? "individual";
-    const labelPlacement = optionImageLayout.label_placement ?? "inline";
-    const contentAlign = optionImageLayout.content_align ?? "left";
     const richContent = selectedDetail.layout_settings?.rich_content ?? selectedDetail.content_json;
+    const renderOptions: MCQRenderOption[] = selectedDetail.options.map((option) => ({
+      ...option,
+      layout_settings: option.layout_settings,
+      blocks: option.blocks,
+    }));
     return (
       <>
         <div className="a4-preview-viewport bank-preview-viewport">
           <div className="a4-scale-shell bank-a4-scale">
-            <div className={`a4-preview-card mcq-layout-${selectedDetail.layout_preset}`}>
-              <div className="paper-question-row">
-                <span className="paper-question-number">1</span>
-                <div className="paper-question-body">
-                  <div className="question-block-preview rich-preview-content">
-                    {hasRichContent(selectedDetail) && richContent ? renderRichNode(richContent) : (
-                      selectedDetail.blocks.length ? selectedDetail.blocks.slice().sort((left, right) => left.order - right.order).map((block) => <div className={`preview-content-block ${block.block_type}`} key={block.id}>{renderBlock(block)}</div>) : <p className="muted-preview">No question content saved.</p>
-                    )}
-                  </div>
-                  {selectedDetail.option_layout === "table" ? renderTableOptions(selectedDetail, isTeacherView) : (
-                    <div className={`option-preview-grid layout-${selectedDetail.option_layout} option-images-${sizing} label-${labelPlacement} align-${contentAlign} image-place-${placement}`}>
-                      {[...selectedDetail.options].sort((left, right) => left.order - right.order).map((option) => (
-                        <span className={isTeacherView && option.is_correct ? "correct" : ""} key={option.id}>
-                          <b>{option.label}{labelPlacement === "inline" ? "." : ""}</b>
-                          {renderOptionContent(option, placement)}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                  {isTeacherView ? <div className="teacher-preview-note">Correct answer: {selected.correct_option || "not set"}</div> : null}
-                </div>
-              </div>
-            </div>
+            <MCQA4Question
+              questionNumber={1}
+              layoutPreset={selectedDetail.layout_preset}
+              richContent={hasRichContent(selectedDetail) && richContent ? richContent : null}
+              blocks={selectedDetail.blocks}
+              options={renderOptions}
+              optionLayout={selectedDetail.option_layout}
+              optionImageLayout={optionImageLayout}
+              teacherView={isTeacherView}
+            />
           </div>
         </div>
+        {isTeacherView ? <div className="teacher-preview-note">Correct answer: {selected.correct_option || "not set"}</div> : null}
         <div className="metadata-mini">
           <span><BadgeCheck size={15} />{selected.review_status_label}</span>
           <span>{selected.marks} mark{selected.marks === 1 ? "" : "s"}</span>

@@ -16,6 +16,7 @@ import "katex/dist/katex.min.css";
 
 import { API_BASE, readJson } from "../api";
 import type { MCQAsset, MCQAssetListPayload, MCQMetadataPayload, MCQReviewStatus } from "../types";
+import { MCQA4Question, type MCQRenderOption } from "./MCQRenderer";
 
 type EditorStep = "question" | "options" | "metadata";
 type ContentBlockType = "text" | "image" | "table" | "note";
@@ -1225,6 +1226,46 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
     );
   }
 
+  function previewOptions(): MCQRenderOption[] {
+    return options.map((option, index) => {
+      const asset = assets.find((item) => item.id === option.assetId) ?? null;
+      const tableCellAssetsForOption = tableHeaders.map((_, cellIndex) => {
+        const assetId = tableCellAssets[option.label]?.[cellIndex] ?? null;
+        return assets.find((item) => item.id === assetId) ?? null;
+      });
+      return {
+        id: option.label,
+        label: option.label,
+        is_correct: correctOption === option.label,
+        order: index + 1,
+        content_text: option.text,
+        layout_settings: optionLayout === "table" ? {
+          table_headers: tableHeaders,
+          table_cells: tableHeaders.map((_, cellIndex) => tableRows[option.label]?.[cellIndex] ?? ""),
+          table_cell_assets: tableCellAssetsForOption,
+        } : {},
+        blocks: [
+          option.text.trim() ? { id: `${option.label}-text`, block_type: "text", text: option.text, order: 1 } : null,
+          option.equation.trim() ? { id: `${option.label}-equation`, block_type: "equation", text: option.equation.replace(/^\${1,2}|\${1,2}$/g, ""), order: 2 } : null,
+          asset ? {
+            id: `${option.label}-image`,
+            block_type: "image",
+            asset,
+            order: 3,
+            settings: {
+              width: option.imageWidth,
+              height: option.imageHeight,
+              fit: option.imageFit,
+              align: option.imageAlign,
+              offset_x: option.imageOffsetX,
+              offset_y: option.imageOffsetY,
+            },
+          } : null,
+        ].filter(Boolean) as MCQRenderOption["blocks"],
+      };
+    });
+  }
+
   function selectedMetadataChips(items: Array<{ id: number; name: string }>, selectedIds: number[], setter: (values: number[]) => void) {
     const selected = items.filter((item) => selectedIds.includes(item.id));
     if (!selected.length) return <span className="empty-inline-note">Nothing selected for this question yet.</span>;
@@ -1501,15 +1542,22 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
           <div className="dashboard-widget-head"><div><strong>A4 live preview</strong><span>Student-facing layout, using your selected structure.</span></div></div>
           <div className="a4-preview-viewport" ref={previewScaleRef}>
             <div className="a4-scale-shell" style={{ "--a4-scale": previewScale } as CSSProperties}>
-              <div className={`a4-preview-card mcq-layout-${layoutPreset}`}>
-                <div className="paper-question-row">
-                  <div className="paper-question-number">1</div>
-                  <div className="paper-question-body">
-                    <div className="question-block-preview rich-preview-content">{richContentHasContent() ? renderRichNode(richContent) : <p className="muted-preview">Write the question, insert equations, add images, or create a table.</p>}</div>
-                  {optionLayout === "table" ? renderOptionTablePreview() : <div className={`option-preview-grid layout-${optionLayout} option-images-${optionImageSizing} label-${optionLabelPlacement} align-${optionContentAlign} image-place-${optionImagePlacement}`}>{options.map((option) => <span className={correctOption === option.label ? "correct" : ""} key={option.label}>{renderOption(option)}</span>)}</div>}
-                  </div>
-                </div>
-              </div>
+              <MCQA4Question
+                questionNumber={1}
+                layoutPreset={layoutPreset}
+                richContent={richContentHasContent() ? richContent : null}
+                options={previewOptions()}
+                optionLayout={optionLayout}
+                optionImageLayout={{
+                  placement: optionImagePlacement,
+                  sizing: optionImageSizing,
+                  label_placement: optionLabelPlacement,
+                  content_align: optionContentAlign,
+                  table_borders: tableShowBorders,
+                  table_headers: tableShowHeaders,
+                }}
+                emptyText="Write the question, insert equations, add images, or create a table."
+              />
             </div>
           </div>
           <div className="metadata-mini"><span><Check size={15} />{reviewStatus.replace("_", " ")}</span><span>{marks} mark</span><span>{optionLayout.replace("_", " ")}</span></div>
