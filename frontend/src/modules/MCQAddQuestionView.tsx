@@ -203,6 +203,84 @@ function normalizeSourceQuestion(value: string) {
   return digits ? `Q${digits}` : "";
 }
 
+function textToRichDoc(text: string): JSONContent {
+  const paragraphs = text.split(/\n{2,}/).map((paragraph) => paragraph.trim()).filter(Boolean);
+  if (!paragraphs.length) return defaultRichContent;
+  return {
+    type: "doc",
+    content: paragraphs.map((paragraph) => ({
+      type: "paragraph",
+      content: [{ type: "text", text: paragraph }],
+    })),
+  };
+}
+
+function richDocToText(doc: JSONContent): string {
+  const lines: string[] = [];
+  const walk = (node: JSONContent) => {
+    if (node.type === "text" && node.text) {
+      lines[lines.length - 1] = `${lines[lines.length - 1] ?? ""}${node.text}`;
+      return;
+    }
+    if (node.type === "paragraph" || node.type === "heading" || node.type === "listItem") {
+      lines.push("");
+      node.content?.forEach(walk);
+      return;
+    }
+    node.content?.forEach(walk);
+  };
+  walk(doc);
+  return lines.map((line) => line.trim()).filter(Boolean).join("\n\n");
+}
+
+function OptionTextEditor({
+  value,
+  label,
+  isCorrect,
+  onChange,
+  onPasteImage,
+}: {
+  value: string;
+  label: string;
+  isCorrect: boolean;
+  onChange: (value: string) => void;
+  onPasteImage: (file: File) => void;
+}) {
+  const editor = useEditor({
+    extensions: [
+      StarterKit,
+      TiptapUnderline,
+      Placeholder.configure({ placeholder: `Type option ${label}. Use $\\frac{1}{2}mv^2$ for inline maths. Paste an image to attach it.` }),
+      TextAlign.configure({ types: ["heading", "paragraph"] }),
+    ],
+    content: textToRichDoc(value),
+    editorProps: {
+      handlePaste: (_view, event) => {
+        const file = clipboardImageFile(event);
+        if (!file) return false;
+        event.preventDefault();
+        onPasteImage(file);
+        return true;
+      },
+    },
+    onUpdate: ({ editor }) => onChange(richDocToText(editor.getJSON())),
+  });
+
+  useEffect(() => {
+    if (!editor) return;
+    const current = richDocToText(editor.getJSON());
+    if (current !== value) {
+      editor.commands.setContent(textToRichDoc(value), { emitUpdate: false });
+    }
+  }, [editor, value]);
+
+  return (
+    <div className={`option-rich-editor ${isCorrect ? "correct" : ""}`}>
+      <EditorContent editor={editor} />
+    </div>
+  );
+}
+
 export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: number | null; onSaved: () => void }) {
   const [metadata, setMetadata] = useState<MCQMetadataPayload | null>(null);
   const [step, setStep] = useState<EditorStep>("question");
@@ -1532,27 +1610,45 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
                 </div>
               ) : (
                 <>
-                  <div className="option-editor-list">{options.map((option, index) => (
-                <div className={`option-editor-card ${correctOption === option.label ? "correct" : ""}`} key={option.label}>
-                  <div className="option-card-head"><button className="option-letter" onClick={() => setCorrectOption(option.label)} title="Mark as correct">{option.label}</button><div><strong>{correctOption === option.label ? "Correct answer" : "Answer option"}</strong><span>Text, equation, image, or a combination.</span></div><button className="icon-button" disabled={options.length <= 2} onClick={() => removeOption(index)}><Trash2 size={15} /></button></div>
-                  <textarea value={option.text} onPaste={(event) => handleOptionPaste(event, index)} onChange={(event) => updateOption(index, { text: event.target.value })} placeholder={`Type option ${option.label}. Use $\\frac{1}{2}mv^2$ for inline maths. Paste an image here to attach it.`} />
-                  <div className="option-asset-row"><label className="compact-upload-button"><UploadCloud size={15} />Upload image<input type="file" accept="image/*" disabled={isUploadingAsset} onChange={(event) => uploadAsset(event.target.files?.[0] ?? null, "option", (asset) => updateOption(index, { assetId: asset.id }))} /></label><select className="styled-select" value={option.assetId ?? ""} onChange={(event) => updateOption(index, { assetId: event.target.value ? Number(event.target.value) : null })}><option value="">No option image</option>{assets.map((asset) => <option value={asset.id} key={asset.id}>{asset.original_name}</option>)}</select>{option.assetId ? <button className="secondary-action" type="button" onClick={() => updateOption(index, { assetId: null })}>Remove</button> : null}</div>
-                  {option.assetId ? (
-                    <div className="option-image-tools extended">
-                      <label><span>Width %</span><input type="number" min="5" max="180" value={option.imageWidth} onChange={(event) => updateOption(index, { imageWidth: Number(event.target.value) })} /></label>
-                      <label><span>Height px</span><input type="number" min="0" max="260" value={option.imageHeight} onChange={(event) => updateOption(index, { imageHeight: Number(event.target.value) })} /></label>
-                      <label><span>X shift</span><input type="number" min="-120" max="120" value={option.imageOffsetX} onChange={(event) => updateOption(index, { imageOffsetX: Number(event.target.value) })} /></label>
-                      <label><span>Y shift</span><input type="number" min="-120" max="120" value={option.imageOffsetY} onChange={(event) => updateOption(index, { imageOffsetY: Number(event.target.value) })} /></label>
-                      <div className="option-image-mini-toolbar">
-                        <button className={option.imageAlign === "left" ? "active" : ""} type="button" onClick={() => updateOption(index, { imageAlign: "left" })} title="Align this image left"><AlignLeft size={16} /></button>
-                        <button className={option.imageAlign === "center" ? "active" : ""} type="button" onClick={() => updateOption(index, { imageAlign: "center" })} title="Center this image"><AlignCenter size={16} /></button>
-                        <button className={option.imageAlign === "right" ? "active" : ""} type="button" onClick={() => updateOption(index, { imageAlign: "right" })} title="Align this image right"><AlignRight size={16} /></button>
-                      </div>
-                      <select value={option.imageFit} onChange={(event) => updateOption(index, { imageFit: event.target.value === "cover" ? "cover" : "contain" })}><option value="contain">Fit whole image</option><option value="cover">Crop to frame</option></select>
+                  <div className="structured-options-shell">
+                    <div className="section-intro compact paper-editor-note">
+                      <strong>Edit answers in paper regions</strong>
+                      <span>Each option has its own editor, image attachment, and image controls. TeacherDesk still keeps A-D structured for shuffling, marking, and answer keys.</span>
                     </div>
-                  ) : null}
-                </div>
-                  ))}</div>
+                    <div className={`option-editor-list structured-option-grid layout-${optionLayout}`}>
+                      {options.map((option, index) => (
+                        <div className={`option-editor-card structured-option-card ${correctOption === option.label ? "correct" : ""}`} key={option.label}>
+                          <div className="option-card-head">
+                            <button className="option-letter" onClick={() => setCorrectOption(option.label)} title="Mark as correct">{option.label}</button>
+                            <div><strong>{correctOption === option.label ? "Correct answer" : "Answer option"}</strong><span>Type text and LaTeX here; attach and tune images below.</span></div>
+                            <button className="icon-button" disabled={options.length <= 2} onClick={() => removeOption(index)}><Trash2 size={15} /></button>
+                          </div>
+                          <OptionTextEditor
+                            value={option.text}
+                            label={option.label}
+                            isCorrect={correctOption === option.label}
+                            onChange={(value) => updateOption(index, { text: value })}
+                            onPasteImage={(file) => uploadAsset(file, "option", (asset) => updateOption(index, { assetId: asset.id }))}
+                          />
+                          <div className="option-asset-row"><label className="compact-upload-button"><UploadCloud size={15} />Upload image<input type="file" accept="image/*" disabled={isUploadingAsset} onChange={(event) => uploadAsset(event.target.files?.[0] ?? null, "option", (asset) => updateOption(index, { assetId: asset.id }))} /></label><select className="styled-select" value={option.assetId ?? ""} onChange={(event) => updateOption(index, { assetId: event.target.value ? Number(event.target.value) : null })}><option value="">No option image</option>{assets.map((asset) => <option value={asset.id} key={asset.id}>{asset.original_name}</option>)}</select>{option.assetId ? <button className="secondary-action" type="button" onClick={() => updateOption(index, { assetId: null })}>Remove</button> : null}</div>
+                          {option.assetId ? (
+                            <div className="option-image-tools extended">
+                              <label><span>Width %</span><input type="number" min="5" max="180" value={option.imageWidth} onChange={(event) => updateOption(index, { imageWidth: Number(event.target.value) })} /></label>
+                              <label><span>Height px</span><input type="number" min="0" max="260" value={option.imageHeight} onChange={(event) => updateOption(index, { imageHeight: Number(event.target.value) })} /></label>
+                              <label><span>X shift</span><input type="number" min="-120" max="120" value={option.imageOffsetX} onChange={(event) => updateOption(index, { imageOffsetX: Number(event.target.value) })} /></label>
+                              <label><span>Y shift</span><input type="number" min="-120" max="120" value={option.imageOffsetY} onChange={(event) => updateOption(index, { imageOffsetY: Number(event.target.value) })} /></label>
+                              <div className="option-image-mini-toolbar">
+                                <button className={option.imageAlign === "left" ? "active" : ""} type="button" onClick={() => updateOption(index, { imageAlign: "left" })} title="Align this image left"><AlignLeft size={16} /></button>
+                                <button className={option.imageAlign === "center" ? "active" : ""} type="button" onClick={() => updateOption(index, { imageAlign: "center" })} title="Center this image"><AlignCenter size={16} /></button>
+                                <button className={option.imageAlign === "right" ? "active" : ""} type="button" onClick={() => updateOption(index, { imageAlign: "right" })} title="Align this image right"><AlignRight size={16} /></button>
+                              </div>
+                              <select className="styled-select" value={option.imageFit} onChange={(event) => updateOption(index, { imageFit: event.target.value === "cover" ? "cover" : "contain" })}><option value="contain">Fit whole image</option><option value="cover">Crop to frame</option></select>
+                            </div>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                   <button className="secondary-action" onClick={addOption}><Plus size={16} />Add option</button>
                 </>
               )}
@@ -1600,6 +1696,7 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
                   placement: optionImagePlacement,
                   sizing: optionImageSizing,
                   label_placement: optionLabelPlacement,
+                  label_align: optionLabelAlign,
                   content_align: optionContentAlign,
                   table_borders: tableShowBorders,
                   table_headers: tableShowHeaders,

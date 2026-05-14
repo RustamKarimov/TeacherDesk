@@ -6013,6 +6013,12 @@ td,
   .paper-style-panel {
     grid-template-columns: 1fr;
   }
+
+  .structured-option-grid.layout-two_column,
+  .structured-option-grid.layout-grid,
+  .structured-option-grid.layout-four_column {
+    grid-template-columns: 1fr;
+  }
 }
 
 .a4-preview-card {
@@ -7717,6 +7723,28 @@ td,
   gap: 12px;
 }
 
+.structured-options-shell {
+  display: grid;
+  gap: 12px;
+}
+
+.paper-editor-note {
+  background: color-mix(in srgb, var(--primary, #14b8a6) 10%, var(--panel-bg));
+}
+
+.structured-option-grid {
+  align-items: stretch;
+}
+
+.structured-option-grid.layout-two_column,
+.structured-option-grid.layout-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.structured-option-grid.layout-four_column {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .option-editor-card {
   display: grid;
   gap: 10px;
@@ -7729,6 +7757,12 @@ td,
 .option-editor-card.correct {
   border-color: var(--teal, #14b8a6);
   background: color-mix(in srgb, var(--teal, #14b8a6) 13%, var(--panel-bg));
+}
+
+.structured-option-card {
+  min-width: 0;
+  align-content: start;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #ffffff 6%, transparent);
 }
 
 .option-card-head {
@@ -7766,6 +7800,44 @@ td,
   color: var(--text, #172033);
   padding: 10px;
   resize: vertical;
+}
+
+.option-rich-editor {
+  border: 1px solid var(--line, #d8e1eb);
+  border-radius: 8px;
+  background: var(--input-bg, #ffffff);
+  color: var(--text, #172033);
+  min-height: 92px;
+  overflow: hidden;
+}
+
+.option-rich-editor.correct {
+  border-color: color-mix(in srgb, var(--teal, #14b8a6) 55%, var(--line));
+}
+
+.option-rich-editor .ProseMirror {
+  min-height: 92px;
+  padding: 10px 11px;
+  outline: none;
+  font-size: 14px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+.option-rich-editor .ProseMirror p {
+  margin: 0 0 0.45em;
+}
+
+.option-rich-editor .ProseMirror p:last-child {
+  margin-bottom: 0;
+}
+
+.option-rich-editor .ProseMirror p.is-editor-empty:first-child::before {
+  color: var(--text-soft, #64748b);
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
 }
 
 .option-equation-panel {
