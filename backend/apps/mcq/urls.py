@@ -1,8 +1,10 @@
 import json
+import hashlib
 import mimetypes
 import os
 import random
 import re
+import tempfile
 from html import escape
 from pathlib import Path
 from uuid import uuid4
@@ -20,6 +22,7 @@ from reportlab.lib.units import mm
 from reportlab.platypus import Image as RLImage
 from reportlab.platypus import KeepTogether, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 from reportlab.pdfgen.canvas import Canvas
+from matplotlib.mathtext import math_to_image
 
 from apps.libraries.urls import active_library, get_settings
 
@@ -951,6 +954,25 @@ PDF_MARGIN = 18 * mm
 CONTENT_WIDTH = PDF_PAGE_WIDTH - PDF_MARGIN * 2
 
 
+def _strip_math_delimiters(value: object) -> str:
+    text = str(value or "").strip()
+    if text.startswith("$$") and text.endswith("$$") and len(text) >= 4:
+        return text[2:-2].strip()
+    if text.startswith("$") and text.endswith("$") and len(text) >= 2:
+        return text[1:-1].strip()
+    return text
+
+
+def _is_math_only(value: object) -> bool:
+    text = str(value or "").strip()
+    if not text:
+        return False
+    if (text.startswith("$") and text.endswith("$")) or (text.startswith("$$") and text.endswith("$$")):
+        return True
+    latex_markers = ("\\frac", "\\sqrt", "\\pm", "\\mathrm", "\\theta", "\\Delta", "\\pi", "\\sum", "\\int", "^", "_")
+    return any(marker in text for marker in latex_markers) and not re.search(r"[A-Za-z]{3,}\s+[A-Za-z]{3,}", text.replace("\\mathrm", ""))
+
+
 def _latex_to_readable(value: str) -> str:
     text = str(value or "")
     replacements = {
@@ -990,6 +1012,44 @@ def _paragraph_text(value: object) -> str:
     return text.replace("\n", "<br/>")
 
 
+def _math_image_path(library, latex: str) -> Path | None:
+    clean = _strip_math_delimiters(latex)
+    if not clean:
+        return None
+    folder = Path(tempfile.gettempdir()) / "teacherdesk_math"
+    folder.mkdir(parents=True, exist_ok=True)
+    digest = hashlib.sha1(clean.encode("utf-8")).hexdigest()[:20]
+    output = folder / f"eq_{digest}.png"
+    if output.exists():
+        return output
+    try:
+        math_to_image(f"${clean}$", str(output), dpi=220, format="png")
+    except Exception:
+        try:
+            math_to_image(clean, str(output), dpi=220, format="png")
+        except Exception:
+            return None
+    return output if output.exists() else None
+
+
+def _math_flowable(library, latex: str, max_width: float, max_height: float = 28, h_align: str = "LEFT"):
+    path = _math_image_path(library, latex)
+    if not path:
+        return None
+    try:
+        image = RLImage(str(path))
+        ratio = image.imageHeight / image.imageWidth if image.imageWidth else 1
+        image.drawWidth = min(max_width, image.imageWidth * 0.28)
+        image.drawHeight = image.drawWidth * ratio
+        if image.drawHeight > max_height:
+            image.drawHeight = max_height
+            image.drawWidth = image.drawHeight / ratio
+        image.hAlign = h_align
+        return image
+    except Exception:
+        return None
+
+
 def _pdf_styles():
     base = getSampleStyleSheet()
     body = ParagraphStyle("TeacherDeskBody", parent=base["BodyText"], fontName="Helvetica", fontSize=11, leading=14, spaceAfter=6)
@@ -1007,17 +1067,17 @@ def _rich_src_asset(src: object, library) -> MCQImageAsset | None:
     return MCQImageAsset.objects.filter(id=int(match.group(1)), library=library).first()
 
 
-def _image_flowable(asset: MCQImageAsset | None, width_percent: float = 100, max_height: float = 160, h_align: str = "CENTER"):
+def _image_flowable(asset: MCQImageAsset | None, width_percent: float = 100, max_height: float = 160, h_align: str = "CENTER", available_width: float = CONTENT_WIDTH):
     if not asset:
         return None
     path = _asset_disk_path(asset)
     if not path.exists():
         return None
-    width = min(max(float(width_percent or 100), 5), 180) / 100 * CONTENT_WIDTH
+    width = min(max(float(width_percent or 100), 5), 180) / 100 * available_width
     try:
         image = RLImage(str(path))
         ratio = image.imageHeight / image.imageWidth if image.imageWidth else 1
-        image.drawWidth = min(width, CONTENT_WIDTH)
+        image.drawWidth = min(width, available_width)
         image.drawHeight = image.drawWidth * ratio
         if image.drawHeight > max_height:
             image.drawHeight = max_height
@@ -1043,6 +1103,11 @@ def _rich_node_flowables(node: dict[str, object], question: MCQQuestion, styles:
             return [Spacer(1, 4)]
         attrs = node.get("attrs") if isinstance(node.get("attrs"), dict) else {}
         align_map = {"center": TA_CENTER, "right": TA_RIGHT, "left": TA_LEFT}
+        plain_text = _rich_inline_plain(content)
+        if _is_math_only(plain_text):
+            math_image = _math_flowable(question.library, plain_text, max_width=CONTENT_WIDTH, max_height=34, h_align={"center": "CENTER", "right": "RIGHT"}.get(str(attrs.get("textAlign") or "left"), "LEFT"))
+            if math_image:
+                return [math_image, Spacer(1, 4)]
         style = ParagraphStyle(
             f"TDParagraph{id(node)}",
             parent=styles["body"],
@@ -1099,6 +1164,20 @@ def _rich_inline_text(nodes: list[object]) -> str:
     return "".join(parts)
 
 
+def _rich_inline_plain(nodes: list[object]) -> str:
+    parts: list[str] = []
+    for node in nodes:
+        if not isinstance(node, dict):
+            continue
+        if node.get("type") == "text":
+            parts.append(str(node.get("text") or ""))
+        elif node.get("type") == "hardBreak":
+            parts.append("\n")
+        else:
+            parts.append(_rich_inline_plain(node.get("content", []) if isinstance(node.get("content"), list) else []))
+    return "".join(parts)
+
+
 def _question_content_flowables(question: MCQQuestion, styles: dict[str, ParagraphStyle]) -> list[object]:
     if isinstance(question.content_json, dict) and question.content_json.get("content"):
         flowables = _rich_node_flowables(question.content_json, question, styles)
@@ -1121,20 +1200,79 @@ def _question_content_flowables(question: MCQQuestion, styles: dict[str, Paragra
     return flowables or [Paragraph("[No question text saved]", styles["body"])]
 
 
-def _option_flowables(option: MCQOption, styles: dict[str, ParagraphStyle], teacher: bool, display_label: str) -> list[object]:
+def _option_text_flowable(option: MCQOption, text: str, styles: dict[str, ParagraphStyle], max_width: float):
+    if _is_math_only(text):
+        math_image = _math_flowable(option.question.library, text, max_width=max_width, max_height=22, h_align="LEFT")
+        if math_image:
+            return math_image
+    return Paragraph(_paragraph_text(text or ""), styles["option"])
+
+
+def _option_flowables(
+    option: MCQOption,
+    styles: dict[str, ParagraphStyle],
+    teacher: bool,
+    display_label: str,
+    layout_config: dict[str, object],
+    cell_width: float,
+) -> list[object]:
     parts: list[object] = []
-    correct = " ✓" if teacher and option.is_correct else ""
+    correct = " (correct)" if teacher and option.is_correct else ""
+    label_placement = str(layout_config.get("label_placement") or "inline")
+    placement = str(layout_config.get("placement") or "top")
+    sizing = str(layout_config.get("sizing") or "individual")
+    content_align = str(layout_config.get("content_align") or "left").upper()
+    h_align = {"LEFT": "LEFT", "CENTER": "CENTER", "RIGHT": "RIGHT"}.get(content_align, "LEFT")
     text_blocks = [block for block in option.blocks.all() if block.text]
     image_blocks = [block for block in option.blocks.all() if block.asset_id]
     text = option.content_text or " ".join(block.text for block in text_blocks)
-    paragraph = Paragraph(f"<b>{display_label}.</b>{correct} {_paragraph_text(text or '')}", styles["option"])
-    parts.append(paragraph)
+    label = Paragraph(f"<b>{display_label}{'.' if label_placement == 'inline' else ''}</b>{correct}", styles["option"])
+    text_flowable = _option_text_flowable(option, text, styles, max_width=max(cell_width - 18, 20)) if text else None
+    image_flowables: list[object] = []
     for block in image_blocks:
         settings = block.settings if isinstance(block.settings, dict) else {}
         align = str(settings.get("align") or "center").upper()
-        image = _image_flowable(block.asset, settings.get("width", 100), max_height=float(settings.get("height") or 145), h_align={"LEFT": "LEFT", "RIGHT": "RIGHT"}.get(align, "CENTER"))
+        image = _image_flowable(
+            block.asset,
+            settings.get("width", 100),
+            max_height=float(settings.get("height") or 145),
+            h_align={"LEFT": "LEFT", "RIGHT": "RIGHT"}.get(align, "CENTER"),
+            available_width=max(cell_width - 18, 20),
+        )
         if image:
-            parts.append(image)
+            if sizing == "same_height" and image.drawHeight:
+                target_height = min(72, float(settings.get("height") or 72))
+                ratio = image.drawWidth / image.drawHeight if image.drawHeight else 1
+                image.drawHeight = target_height
+                image.drawWidth = min(target_height * ratio, max(cell_width - 18, 20))
+            elif sizing == "same_width":
+                ratio = image.drawHeight / image.drawWidth if image.drawWidth else 1
+                image.drawWidth = max(cell_width - 18, 20)
+                image.drawHeight = image.drawWidth * ratio
+            elif sizing == "same_size":
+                image.drawWidth = max(cell_width - 18, 20)
+                image.drawHeight = 86
+            image_flowables.append(image)
+    if label_placement == "above":
+        parts.append(label)
+    elif text_flowable and not _is_math_only(text):
+        parts.append(Paragraph(f"<b>{display_label}.</b>{correct} {_paragraph_text(text or '')}", styles["option"]))
+        text_flowable = None
+    else:
+        parts.append(label)
+    if placement == "middle" and image_flowables and text_flowable:
+        side = Table([[image_flowables, [text_flowable]]], colWidths=[cell_width * 0.44, cell_width * 0.48], hAlign=h_align)
+        side.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "MIDDLE"), ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 4)]))
+        parts.append(side)
+    else:
+        if placement == "top":
+            parts.extend(image_flowables)
+        if text_flowable:
+            parts.append(text_flowable)
+        if placement == "bottom":
+            parts.extend(image_flowables)
+        if placement == "middle" and image_flowables and not text_flowable:
+            parts.extend(image_flowables)
     return parts
 
 
@@ -1149,8 +1287,19 @@ def _options_flowable(question: MCQQuestion, options: list[tuple[str, MCQOption]
             rows.append([Paragraph("", styles["body"])] + [Paragraph(f"<b>{_paragraph_text(header)}</b>", styles["body"]) for header in headers])
         for display_label, option in options:
             cells = [Paragraph(f"<b>{display_label}</b>", styles["body"])]
-            for value in option.layout_settings.get("table_cells", []):
-                cells.append(Paragraph(_paragraph_text(value), styles["body"]))
+            asset_ids = option.layout_settings.get("table_cell_asset_ids", [])
+            cell_width = CONTENT_WIDTH / max(len(headers) + 1, 2)
+            for index, value in enumerate(option.layout_settings.get("table_cells", [])):
+                cell_parts: list[object] = []
+                if str(value).strip():
+                    math_cell = _math_flowable(option.question.library, value, max_width=cell_width, max_height=24, h_align="CENTER") if _is_math_only(value) else None
+                    cell_parts.append(math_cell or Paragraph(_paragraph_text(value), styles["body"]))
+                if isinstance(asset_ids, list) and index < len(asset_ids) and asset_ids[index]:
+                    asset = MCQImageAsset.objects.filter(id=asset_ids[index], library=question.library).first()
+                    image = _image_flowable(asset, 100, max_height=70, h_align="CENTER", available_width=cell_width)
+                    if image:
+                        cell_parts.append(image)
+                cells.append(cell_parts or Paragraph("", styles["body"]))
             rows.append(cells)
         table = Table(rows, hAlign="LEFT", repeatRows=1 if show_headers else 0)
         commands = [("VALIGN", (0, 0), (-1, -1), "MIDDLE"), ("ALIGN", (0, 0), (-1, -1), "CENTER"), ("FONTSIZE", (0, 0), (-1, -1), 9)]
@@ -1164,12 +1313,16 @@ def _options_flowable(question: MCQQuestion, options: list[tuple[str, MCQOption]
         columns = 2
     elif question.option_layout in {MCQQuestion.OptionLayout.FOUR_COLUMN, MCQQuestion.OptionLayout.GRID}:
         columns = 4
-    cells = [_option_flowables(option, styles, teacher, label) for label, option in options]
+    layout_config = question.layout_settings.get("option_image_layout", {}) if isinstance(question.layout_settings, dict) else {}
+    cell_width = CONTENT_WIDTH / columns
+    cells = [_option_flowables(option, styles, teacher, label, layout_config, cell_width) for label, option in options]
     rows = [cells[index:index + columns] for index in range(0, len(cells), columns)]
     while rows and len(rows[-1]) < columns:
         rows[-1].append("")
-    table = Table(rows, colWidths=[CONTENT_WIDTH / columns] * columns, hAlign="LEFT")
-    table.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"), ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 8), ("BOTTOMPADDING", (0, 0), (-1, -1), 8)]))
+    placement = str(layout_config.get("placement") or "top")
+    valign = {"top": "TOP", "middle": "MIDDLE", "bottom": "BOTTOM"}.get(placement, "TOP")
+    table = Table(rows, colWidths=[cell_width] * columns, hAlign="LEFT")
+    table.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), valign), ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 8), ("BOTTOMPADDING", (0, 0), (-1, -1), 8)]))
     return table
 
 

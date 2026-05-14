@@ -15,7 +15,14 @@ type MCQContentBlock = {
   asset: MCQAsset | null;
   table_data?: { rows?: string[][] };
   order: number;
-  settings?: { width?: number; fit?: "contain" | "cover" };
+  settings?: {
+    width?: number;
+    height?: number;
+    fit?: "contain" | "cover";
+    align?: "left" | "center" | "right";
+    offset_x?: number;
+    offset_y?: number;
+  };
 };
 
 type MCQOptionDetail = {
@@ -39,6 +46,8 @@ type MCQQuestionDetailPayload = MCQQuestionRow & {
     option_image_layout?: {
       placement?: "top" | "middle" | "bottom";
       sizing?: "individual" | "same_height" | "same_width" | "same_size";
+      label_placement?: "inline" | "above";
+      content_align?: "left" | "center" | "right";
     };
   };
   blocks: MCQContentBlock[];
@@ -130,8 +139,16 @@ function renderOptionContent(option: MCQOptionDetail, placement: "top" | "middle
   const textBlocks = orderedBlocks.filter((block) => block.block_type !== "image" && blockHasContent(block));
   const imageNodes = images.map((block) => {
     const width = block.settings?.width ? `${block.settings.width}%` : undefined;
+    const height = block.settings?.height ? `${block.settings.height}px` : undefined;
     const fit = block.settings?.fit === "cover" ? "cover" : "contain";
-    return <img className={`a4-option-image fit-${fit}`} src={`${API_BASE}${block.asset?.preview_url}`} alt={block.asset?.original_name || `${option.label} image`} style={width ? { width } : undefined} key={block.id} />;
+    const align = block.settings?.align === "left" || block.settings?.align === "right" ? block.settings.align : "center";
+    const offsetX = Number(block.settings?.offset_x ?? 0);
+    const offsetY = Number(block.settings?.offset_y ?? 0);
+    const style: CSSProperties = {};
+    if (width) style.width = width;
+    if (height) style.height = height;
+    if (offsetX || offsetY) style.transform = `translate(${offsetX}px, ${offsetY}px)`;
+    return <img className={`a4-option-image fit-${fit} align-${align}`} src={`${API_BASE}${block.asset?.preview_url}`} alt={block.asset?.original_name || `${option.label} image`} style={style} key={block.id} />;
   });
   const textNodes = textBlocks.map((block) => block.block_type === "equation" ? <LatexMath latex={block.text} key={block.id} /> : <span className="option-text-fragment" key={block.id}>{renderMathText(block.text)}</span>);
   if (!imageNodes.length && !textNodes.length) return <span className="option-text-fragment">Answer option</span>;
@@ -502,6 +519,8 @@ export function MCQQuestionBankView({
     const optionImageLayout = selectedDetail.layout_settings?.option_image_layout ?? {};
     const placement = optionImageLayout.placement ?? "top";
     const sizing = optionImageLayout.sizing ?? "individual";
+    const labelPlacement = optionImageLayout.label_placement ?? "inline";
+    const contentAlign = optionImageLayout.content_align ?? "left";
     const richContent = selectedDetail.layout_settings?.rich_content ?? selectedDetail.content_json;
     return (
       <>
@@ -517,10 +536,10 @@ export function MCQQuestionBankView({
                     )}
                   </div>
                   {selectedDetail.option_layout === "table" ? renderTableOptions(selectedDetail, isTeacherView) : (
-                    <div className={`option-preview-grid layout-${selectedDetail.option_layout} option-images-${sizing}`}>
+                    <div className={`option-preview-grid layout-${selectedDetail.option_layout} option-images-${sizing} label-${labelPlacement} align-${contentAlign} image-place-${placement}`}>
                       {[...selectedDetail.options].sort((left, right) => left.order - right.order).map((option) => (
                         <span className={isTeacherView && option.is_correct ? "correct" : ""} key={option.id}>
-                          <b>{option.label}.</b>
+                          <b>{option.label}{labelPlacement === "inline" ? "." : ""}</b>
                           {renderOptionContent(option, placement)}
                         </span>
                       ))}

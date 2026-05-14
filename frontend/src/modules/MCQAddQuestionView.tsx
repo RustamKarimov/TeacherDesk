@@ -1506,7 +1506,7 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
                   <div className="paper-question-number">1</div>
                   <div className="paper-question-body">
                     <div className="question-block-preview rich-preview-content">{richContentHasContent() ? renderRichNode(richContent) : <p className="muted-preview">Write the question, insert equations, add images, or create a table.</p>}</div>
-                    {optionLayout === "table" ? renderOptionTablePreview() : <div className={`option-preview-grid layout-${optionLayout} option-images-${optionImageSizing} label-${optionLabelPlacement} align-${optionContentAlign}`}>{options.map((option) => <span className={correctOption === option.label ? "correct" : ""} key={option.label}>{renderOption(option)}</span>)}</div>}
+                  {optionLayout === "table" ? renderOptionTablePreview() : <div className={`option-preview-grid layout-${optionLayout} option-images-${optionImageSizing} label-${optionLabelPlacement} align-${optionContentAlign} image-place-${optionImagePlacement}`}>{options.map((option) => <span className={correctOption === option.label ? "correct" : ""} key={option.label}>{renderOption(option)}</span>)}</div>}
                   </div>
                 </div>
               </div>
