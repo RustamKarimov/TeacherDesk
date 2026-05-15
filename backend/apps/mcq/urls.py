@@ -1739,6 +1739,7 @@ p {{ margin: 0 0 9px; }}
 .option-preview-grid.option-images-same_size .a4-option-image {{ width: 100% !important; height: 86px !important; object-fit: contain; }}
 .mcq-preview-table,.mcq-answer-table-preview {{ width: 100%; border-collapse: collapse; margin: 8px 0; }}
 .mcq-preview-table th,.mcq-preview-table td,.mcq-answer-table-preview th,.mcq-answer-table-preview td {{ border: 1px solid #111827; padding: 7px 8px; text-align: center; vertical-align: middle; }}
+.mcq-preview-table.embedded-option-table {{ table-layout: auto; }}
 .mcq-preview-table.embedded-option-table.no-borders th,.mcq-preview-table.embedded-option-table.no-borders td {{ border-color: transparent; }}
 .mcq-preview-table.embedded-option-table.letter-align-left td:nth-child(odd),.mcq-preview-table.embedded-option-table.letter-align-left th:nth-child(odd) {{ text-align: left; }}
 .mcq-preview-table.embedded-option-table.letter-align-center td:nth-child(odd),.mcq-preview-table.embedded-option-table.letter-align-center th:nth-child(odd) {{ text-align: center; }}
@@ -1746,6 +1747,10 @@ p {{ margin: 0 0 9px; }}
 .mcq-preview-table.embedded-option-table.content-align-left td:nth-child(even),.mcq-preview-table.embedded-option-table.content-align-left th:nth-child(even) {{ text-align: left; }}
 .mcq-preview-table.embedded-option-table.content-align-center td:nth-child(even),.mcq-preview-table.embedded-option-table.content-align-center th:nth-child(even) {{ text-align: center; }}
 .mcq-preview-table.embedded-option-table.content-align-right td:nth-child(even),.mcq-preview-table.embedded-option-table.content-align-right th:nth-child(even) {{ text-align: right; }}
+.mcq-preview-table.embedded-option-table td,.mcq-preview-table.embedded-option-table th {{ overflow-wrap: normal; word-break: normal; }}
+.mcq-preview-table.embedded-option-table td:nth-child(odd),.mcq-preview-table.embedded-option-table th:nth-child(odd) {{ width: 32px; white-space: nowrap; font-weight: 800; }}
+.mcq-preview-table.embedded-option-table td:nth-child(even),.mcq-preview-table.embedded-option-table th:nth-child(even) {{ padding-left: calc(6px + var(--mcq-option-gap, 0px)); }}
+.mcq-preview-table.embedded-option-table.layout-four_column td:nth-child(even),.mcq-preview-table.embedded-option-table.layout-four_column th:nth-child(even) {{ white-space: nowrap; }}
 .mcq-answer-table-preview.no-borders th,.mcq-answer-table-preview.no-borders td {{ border-color: transparent; }}
 .mcq-table-cell-content {{ display: grid; gap: 4px; justify-items: center; align-items: center; }}
 .mcq-table-cell-content img {{ display: block; max-width: 100%; max-height: 80px; object-fit: contain; }}
@@ -1758,7 +1763,7 @@ p {{ margin: 0 0 9px; }}
 .page-number-token::after {{ content: counter(page); }}
 .page-count-token::after {{ content: counter(pages); }}
 .source-meta {{ color: #6b7280; font-size: 8pt; margin-bottom: 4px; }}
-.katex {{ font-size: calc(1em * var(--mcq-equation-scale, 1)); }}
+.katex {{ font-size: calc(1em * var(--mcq-equation-scale, 1)); white-space: nowrap; }}
 .katex-display {{ margin: 8px 0; }}
 .teacher-preview-note {{ margin-top: 10px; color: #065f46; font-weight: 700; }}
 .correct-word {{ color: #065f46; font-size: 8pt; }}

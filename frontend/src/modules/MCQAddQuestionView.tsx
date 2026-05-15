@@ -262,6 +262,7 @@ const RichTable = TiptapTable.extend({
                 "data-option-content-align": attrs.contentAlign || "",
                 "data-option-gap": attrs.optionGap === null || attrs.optionGap === undefined ? "" : String(attrs.optionGap),
                 "data-option-cell-padding": attrs.cellPadding || "",
+                style: `--mcq-option-gap:${Number(attrs.optionGap) || 0}px`,
               }));
               return true;
             });
@@ -1916,13 +1917,16 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
                   ) : null}
                   {ribbonMode === "optionGroup" || ribbonMode === "optionTable" ? (
                     <>
-                      <label className="ribbon-select-label"><span>Correct</span><select value={correctOption} onChange={(event) => setCorrectOption(event.target.value)}>{["A", "B", "C", "D"].map((label) => <option key={label} value={label}>{label}</option>)}</select></label>
+                      <div className="correct-answer-pill-group" aria-label="Correct answer">
+                        <span>Correct</span>
+                        {["A", "B", "C", "D"].map((label) => <button className={correctOption === label ? "active" : ""} key={label} type="button" onClick={() => setCorrectOption(label)}>{label}</button>)}
+                      </div>
                       <button className={optionLabelPlacement === "inline" ? "active" : ""} type="button" onClick={() => { setOptionLabelPlacement("inline"); updateSelectedTableAttrs({ letterPlacement: "inline" }); }}>A.</button>
                       <button className={optionLabelPlacement === "above" ? "active" : ""} type="button" onClick={() => { setOptionLabelPlacement("above"); updateSelectedTableAttrs({ letterPlacement: "above" }); }}>A</button>
                       <button className={optionContentAlign === "left" ? "active" : ""} type="button" onClick={() => { setOptionContentAlign("left"); updateSelectedTableAttrs({ contentAlign: "left" }); }} title="Align option content left"><AlignLeft size={15} /></button>
                       <button className={optionContentAlign === "center" ? "active" : ""} type="button" onClick={() => { setOptionContentAlign("center"); updateSelectedTableAttrs({ contentAlign: "center" }); }} title="Center option content"><AlignCenter size={15} /></button>
                       <button className={optionContentAlign === "right" ? "active" : ""} type="button" onClick={() => { setOptionContentAlign("right"); updateSelectedTableAttrs({ contentAlign: "right" }); }} title="Align option content right"><AlignRight size={15} /></button>
-                      <label className="ribbon-range-label"><span>Gap</span><input type="range" min={0} max={18} value={optionGapPx} onChange={(event) => { const next = Number(event.target.value); setOptionGapPx(next); updateSelectedTableAttrs({ optionGap: next }); }} /></label>
+                      <label className="ribbon-range-label"><span>Indent</span><input type="range" min={0} max={24} value={optionGapPx} onChange={(event) => { const next = Number(event.target.value); setOptionGapPx(next); updateSelectedTableAttrs({ optionGap: next }); }} /><em>{optionGapPx}px</em></label>
                     </>
                   ) : null}
                   <span className="ribbon-divider" />
@@ -1930,11 +1934,11 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
                   <button type="button" onClick={() => richEditor?.chain().focus().redo().run()} title="Redo"><Redo2 size={16} /></button>
                 </div>
                 <div className="insert-options-ribbon">
-                  <strong>Insert options</strong>
+                  <strong>Answer layout</strong>
                   {optionLayoutVisuals.map((item) => (
-                    <button className={optionLayout === item.value ? "active" : ""} key={item.value} onClick={() => requestOptionLayout(item.value)} type="button">
+                    <button className={optionLayout === item.value ? "active" : ""} key={item.value} onClick={() => requestOptionLayout(item.value)} title={item.subtitle} type="button">
                       <span className={`option-layout-thumbnail ${item.className}`}><i /><i /><i /><i /></span>
-                      <span>{item.title}</span>
+                      <span><b>{item.title}</b><small>{item.subtitle}</small></span>
                     </button>
                   ))}
                 </div>
