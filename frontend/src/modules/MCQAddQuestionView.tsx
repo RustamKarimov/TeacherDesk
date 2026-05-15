@@ -9,7 +9,8 @@ import TableRow from "@tiptap/extension-table-row";
 import TextAlign from "@tiptap/extension-text-align";
 import TiptapUnderline from "@tiptap/extension-underline";
 import Placeholder from "@tiptap/extension-placeholder";
-import { NodeSelection } from "@tiptap/pm/state";
+import { NodeSelection, Plugin } from "@tiptap/pm/state";
+import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { type ClipboardEvent as ReactClipboardEvent, type CSSProperties, type Dispatch, type ReactNode, type SetStateAction, useEffect, useMemo, useRef, useState } from "react";
 import katex from "katex";
 import "katex/dist/katex.min.css";
@@ -40,6 +41,7 @@ type OptionLabelAlign = "left" | "center" | "right";
 type OptionContentAlign = "left" | "center" | "right";
 type ExtractedOption = { label: string; text: string };
 type RibbonMode = "text" | "image" | "table" | "optionGroup" | "optionTable" | "optionImage";
+type EditorTableContext = Record<string, unknown>;
 type LastMetadataDefaults = {
   subject: string;
   syllabus: string;
@@ -237,6 +239,37 @@ const RichTable = TiptapTable.extend({
         renderHTML: (attributes) => (attributes.cellPadding ? { "data-option-cell-padding": attributes.cellPadding } : {}),
       },
     };
+  },
+  addProseMirrorPlugins() {
+    const parentPlugins = this.parent?.() ?? [];
+    return [
+      ...parentPlugins,
+      new Plugin({
+        props: {
+          decorations(state) {
+            const decorations: Decoration[] = [];
+            state.doc.descendants((node, pos) => {
+              if (node.type.name !== "table") return true;
+              const attrs = node.attrs ?? {};
+              if (!attrs.optionGroup) return true;
+              decorations.push(Decoration.node(pos, pos + node.nodeSize, {
+                "data-mcq-option-group": "true",
+                "data-option-layout": attrs.optionLayout || "",
+                "data-option-borders": attrs.optionBorders === null || attrs.optionBorders === undefined ? "" : String(attrs.optionBorders),
+                "data-option-headers": attrs.optionHeaders === null || attrs.optionHeaders === undefined ? "" : String(attrs.optionHeaders),
+                "data-option-letter-placement": attrs.letterPlacement || "",
+                "data-option-letter-align": attrs.letterAlign || "",
+                "data-option-content-align": attrs.contentAlign || "",
+                "data-option-gap": attrs.optionGap === null || attrs.optionGap === undefined ? "" : String(attrs.optionGap),
+                "data-option-cell-padding": attrs.cellPadding || "",
+              }));
+              return true;
+            });
+            return DecorationSet.create(state.doc, decorations);
+          },
+        },
+      }),
+    ];
   },
 });
 
@@ -536,6 +569,7 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
   const [customImageWidth, setCustomImageWidth] = useState(60);
   const [pendingOptionLayout, setPendingOptionLayout] = useState<string | null>(null);
   const [selectionRevision, setSelectionRevision] = useState(0);
+  const [domTableContext, setDomTableContext] = useState<EditorTableContext>({});
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -644,7 +678,28 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
       refreshSelectedImageState(editor);
       setSelectionRevision((value) => value + 1);
     },
+    onFocus: ({ editor }) => {
+      refreshSelectedImageState(editor);
+      setSelectionRevision((value) => value + 1);
+    },
   });
+
+  useEffect(() => {
+    const handleEditorEvent = (event: Event) => {
+      const stage = editorScaleRef.current;
+      const target = event.target;
+      if (!(target instanceof Node) || !stage?.contains(target)) return;
+      updateDomTableContext(target);
+    };
+    document.addEventListener("mousedown", handleEditorEvent, true);
+    document.addEventListener("click", handleEditorEvent, true);
+    document.addEventListener("keyup", handleEditorEvent, true);
+    return () => {
+      document.removeEventListener("mousedown", handleEditorEvent, true);
+      document.removeEventListener("click", handleEditorEvent, true);
+      document.removeEventListener("keyup", handleEditorEvent, true);
+    };
+  }, [richEditor]);
 
   useEffect(() => {
     if (!richEditor) return;
@@ -726,12 +781,52 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
     return walk(content);
   }
 
-  function currentTableAttrs() {
-    return richEditor?.getAttributes("table") ?? {};
+  function selectedTableAttrsFromSelection() {
+    if (!richEditor) return {};
+    const { $from } = richEditor.state.selection;
+    for (let depth = $from.depth; depth >= 0; depth -= 1) {
+      const node = $from.node(depth);
+      if (node.type.name === "table") {
+        return node.attrs ?? {};
+      }
+    }
+    return {};
   }
 
-  function selectedTableIsOptionGroup() {
-    return Boolean(currentTableAttrs().optionGroup);
+  function currentTableAttrs() {
+    return selectedTableAttrsFromSelection();
+  }
+
+  function selectionIsInsideTable() {
+    return Boolean(Object.keys(selectedTableAttrsFromSelection()).length);
+  }
+
+  function tableContextFromElement(element: Element | null): EditorTableContext {
+    const tableElement = element?.closest?.(".tableWrapper[data-mcq-option-group], table[data-mcq-option-group]") as HTMLElement | null
+      ?? element?.closest?.(".tableWrapper, table") as HTMLElement | null;
+    if (!tableElement) return {};
+    const dataset = tableElement.dataset;
+    return {
+      optionGroup: dataset.mcqOptionGroup === "true",
+      optionLayout: dataset.optionLayout || null,
+      optionBorders: dataset.optionBorders || null,
+      optionHeaders: dataset.optionHeaders || null,
+      letterPlacement: dataset.optionLetterPlacement || null,
+      letterAlign: dataset.optionLetterAlign || null,
+      contentAlign: dataset.optionContentAlign || null,
+      optionGap: dataset.optionGap || null,
+      cellPadding: dataset.optionCellPadding || null,
+    };
+  }
+
+  function updateDomTableContext(target?: EventTarget | null) {
+    const targetElement = target instanceof Element ? target : null;
+    const selectionNode = window.getSelection()?.anchorNode ?? null;
+    const selectionElement = selectionNode instanceof Element ? selectionNode : selectionNode?.parentElement ?? null;
+    const targetContext = tableContextFromElement(targetElement);
+    const context = Object.keys(targetContext).length ? targetContext : tableContextFromElement(selectionElement);
+    setDomTableContext(context);
+    setSelectionRevision((value) => value + 1);
   }
 
   function updateSelectedTableAttrs(attrs: Record<string, unknown>) {
@@ -1715,8 +1810,9 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
     );
   }
 
-  const selectedTableAttrs = currentTableAttrs();
-  const isInTable = Boolean(richEditor?.isActive("table"));
+  const selectionTableAttrs = currentTableAttrs();
+  const selectedTableAttrs = Object.keys(selectionTableAttrs).length ? { ...selectionTableAttrs, ...domTableContext } : domTableContext;
+  const isInTable = selectionIsInsideTable() || Boolean(Object.keys(domTableContext).length);
   const isOptionGroup = Boolean(selectedTableAttrs.optionGroup);
   const ribbonMode: RibbonMode = selectedImageWidth && isOptionGroup
     ? "optionImage"
@@ -1851,7 +1947,7 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
                     <button className="secondary-action" type="button" onClick={() => setPendingOptionLayout(null)}>Cancel</button>
                   </div>
                 ) : null}
-                <div className="a4-editor-stage" ref={editorScaleRef}>
+                <div className="a4-editor-stage" ref={editorScaleRef} onClick={(event) => updateDomTableContext(event.target)} onKeyUp={(event) => updateDomTableContext(event.target)}>
                   <div className="a4-scale-shell" style={{ "--a4-scale": editorScale } as CSSProperties}>
                     <div className="a4-editor-page">
                       <EditorContent editor={richEditor} />
