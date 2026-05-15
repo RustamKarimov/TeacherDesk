@@ -1978,6 +1978,13 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
                   ) : null}
                   {ribbonMode === "table" || ribbonMode === "optionTable" ? (
                     <>
+                      <button className={richEditor?.isActive("bold") ? "active" : ""} type="button" onClick={() => richEditor?.chain().focus().toggleBold().run()} title="Bold"><Bold size={16} /></button>
+                      <button className={richEditor?.isActive("italic") ? "active" : ""} type="button" onClick={() => richEditor?.chain().focus().toggleItalic().run()} title="Italic"><Italic size={16} /></button>
+                      <button className={richEditor?.isActive("underline") ? "active" : ""} type="button" onClick={() => richEditor?.chain().focus().toggleUnderline().run()} title="Underline"><Underline size={16} /></button>
+                      <button type="button" onClick={() => richEditor?.chain().focus().setTextAlign("left").run()} title="Align cell text left"><AlignLeft size={16} /></button>
+                      <button type="button" onClick={() => richEditor?.chain().focus().setTextAlign("center").run()} title="Center cell text"><AlignCenter size={16} /></button>
+                      <button type="button" onClick={() => richEditor?.chain().focus().setTextAlign("right").run()} title="Align cell text right"><AlignRight size={16} /></button>
+                      <span className="ribbon-divider" />
                       <button type="button" onClick={() => runTableCommand("addRowBefore")} title="Add row above"><Rows3 size={15} /><span className="mini-corner above">+</span></button>
                       <button type="button" onClick={() => runTableCommand("addRowAfter")} title="Add row below"><Rows3 size={15} /><span className="mini-corner below">+</span></button>
                       <button type="button" onClick={() => runTableCommand("deleteRow")} title="Delete row"><Rows3 size={15} /><span className="mini-corner delete">-</span></button>

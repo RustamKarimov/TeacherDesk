@@ -605,7 +605,6 @@ export function MCQQuestionBankView({
                 onChange={(next) => { setReviewStatus(next as MCQReviewStatus | ""); setPage(1); }}
                 options={[{ value: "", label: "Any review status" }, ...(metadata?.review_statuses ?? []).map((item) => ({ value: item.value, label: item.label }))]}
               />
-              <button className="secondary-action compact-action" type="button" onClick={resetFilters}>Clear</button>
             </div>
             <div className="mcq-filter-row mcq-filter-row-tertiary">
               <SingleSelectFilter
@@ -626,6 +625,9 @@ export function MCQQuestionBankView({
                 onChange={(next) => { setExamCode(next); setPage(1); }}
                 options={[{ value: "", label: "Any exam code" }, ...(metadata?.exam_codes ?? []).map((item) => ({ value: item, label: item }))]}
               />
+            </div>
+            <div className="filter-action-row">
+              <button className="ghost-button compact-clear-action" type="button" onClick={resetFilters}><X size={14} />Clear filters</button>
             </div>
           </div>
 

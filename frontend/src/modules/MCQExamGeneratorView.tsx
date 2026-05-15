@@ -312,7 +312,7 @@ export function MCQExamGeneratorView({
                       <MultiPicker label="Topics" options={metadata?.topics ?? []} selectedIds={row.topicIds} onChange={(ids) => updateTopicRow(row.id, { topicIds: ids })} />
                       <MultiPicker label="Tags" options={metadata?.tags ?? []} selectedIds={row.tagIds} onChange={(ids) => updateTopicRow(row.id, { tagIds: ids })} />
                       <label className={`count-filter-field ${available < row.count ? "warning" : ""}`}>
-                        <span>Needed</span>
+                        <span>Questions needed</span>
                         <input min={1} max={available || 1} type="number" value={row.count} onChange={(event) => updateTopicRow(row.id, { count: Number(event.target.value) || 1 })} />
                         <em>{available} available</em>
                       </label>
