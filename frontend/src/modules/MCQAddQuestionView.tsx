@@ -1933,8 +1933,8 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
               <div className="paper-style-panel">
                 <div><strong>Paper style</strong><span>Saved with this question and mirrored in previews.</span></div>
                 <div className="paper-font-selector"><span>Face</span><div className={`teacherdesk-select ${openControlDropdown === "font" ? "open" : ""}`}><button style={{ fontFamily: paperFontFamily }} type="button" onClick={() => setOpenControlDropdown(openControlDropdown === "font" ? null : "font")}>{paperFontFamily}</button>{openControlDropdown === "font" ? <div className="teacherdesk-select-menu">{paperFontOptions.map((font) => <button className={paperFontFamily === font ? "active" : ""} key={font} style={{ fontFamily: font }} type="button" onClick={() => { setPaperFontFamily(font); setOpenControlDropdown(null); }}>{font}</button>)}</div> : null}</div></div>
-                <label><span>Font</span><input type="number" min={8} max={18} step={0.5} value={paperFontSizePt} onChange={(event) => setPaperFontSizePt(Number(event.target.value || 11))} /><em>pt</em></label>
-                <label><span>Equation</span><input type="number" min={0.75} max={1.4} step={0.05} value={equationScale} onChange={(event) => setEquationScale(Number(event.target.value || 1))} /><em>x</em></label>
+                <label className="paper-number-field"><span>Font</span><div><input type="number" min={8} max={18} step={0.5} value={paperFontSizePt} onChange={(event) => setPaperFontSizePt(Number(event.target.value || 11))} /><em>pt</em></div></label>
+                <label className="paper-number-field"><span>Equation</span><div><input type="number" min={0.75} max={1.4} step={0.05} value={equationScale} onChange={(event) => setEquationScale(Number(event.target.value || 1))} /><em>x</em></div></label>
               </div>
               <div className="rich-editor-shell">
                 <div className={`rich-editor-toolbar contextual-ribbon mode-${ribbonMode}`}>
@@ -2043,11 +2043,15 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
                 </div>
                 {pendingOptionLayout ? (
                   <div className="option-layout-choice-panel">
-                    <strong>An option area already exists.</strong>
-                    <span>Most MCQ questions need one A-D area, so replacing is usually best.</span>
-                    <button className="primary-action" type="button" onClick={() => replaceOptionLayout(pendingOptionLayout)}>Replace current option layout</button>
-                    <button className="secondary-action" type="button" onClick={() => { insertOptionLayout(pendingOptionLayout); setPendingOptionLayout(null); }}>Insert another option group</button>
-                    <button className="secondary-action" type="button" onClick={() => setPendingOptionLayout(null)}>Cancel</button>
+                    <div>
+                      <strong>Option area already exists</strong>
+                      <span>Replace the layout and keep A-D content, or insert a second option group.</span>
+                    </div>
+                    <div className="option-layout-choice-actions">
+                      <button className="primary-action" type="button" onClick={() => replaceOptionLayout(pendingOptionLayout)}>Replace layout</button>
+                      <button className="secondary-action" type="button" onClick={() => { insertOptionLayout(pendingOptionLayout); setPendingOptionLayout(null); }}>Insert another</button>
+                      <button className="secondary-action" type="button" onClick={() => setPendingOptionLayout(null)}>Cancel</button>
+                    </div>
                   </div>
                 ) : null}
                 <div className="a4-editor-stage" ref={editorScaleRef} onClick={(event) => updateDomTableContext(event.target)} onKeyUp={(event) => updateDomTableContext(event.target)}>
@@ -2250,7 +2254,7 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
 
         <aside className="panel mcq-preview-panel sticky-preview">
           <div ref={metadataPickerRef} className="side-metadata-panel top-metadata-panel">
-            <div className="dashboard-widget-head"><div><strong>Question details</strong><span>Used for filtering, duplicate checks, and generated answer keys.</span></div></div>
+            <div className="dashboard-widget-head compact-head"><div><strong>Question details</strong><span>Filtering and answer key data.</span></div></div>
             {!sourceQuestionNumber.trim() ? <div className="callout warning compact-callout">Original question number is empty.</div> : null}
             <div className="side-metadata-grid">
               <label className="field-stack compact wide"><span>Exam code</span><input value={examCode} onBlur={applyExamCodeDefaults} onChange={(event) => setExamCode(event.target.value)} placeholder="9702_w23_qp_11" /></label>
