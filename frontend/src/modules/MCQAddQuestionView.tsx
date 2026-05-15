@@ -393,6 +393,10 @@ function tableCellNode(text = "", header = false): JSONContent {
   return { type: header ? "tableHeader" : "tableCell", content: [paragraphNode(text)] };
 }
 
+function tableCellContentNode(content: JSONContent[] | undefined, header = false): JSONContent {
+  return { type: header ? "tableHeader" : "tableCell", content: content?.length ? content : [paragraphNode("")] };
+}
+
 function tableRowNode(cells: Array<string | { text: string; header?: boolean }>): JSONContent {
   return {
     type: "tableRow",
@@ -400,25 +404,69 @@ function tableRowNode(cells: Array<string | { text: string; header?: boolean }>)
   };
 }
 
-function optionLayoutContent(layout: string): JSONContent {
+function nodeText(node?: JSONContent): string {
+  if (!node) return "";
+  if (typeof node.text === "string") return node.text;
+  return node.content?.map(nodeText).join("") ?? "";
+}
+
+function optionContentMapFromRichContent(content: JSONContent): Map<string, JSONContent[]> {
+  const optionContent = new Map<string, JSONContent[]>();
+  const collectCellContent = (cells: JSONContent[], startIndex: number) => {
+    const content: JSONContent[] = [];
+    cells.slice(startIndex).forEach((cell, index) => {
+      if (index > 0) content.push({ type: "paragraph" });
+      content.push(...(cell.content ?? [paragraphNode("")]));
+    });
+    return content.length ? content : [paragraphNode("")];
+  };
+  const inspectTable = (table: JSONContent) => {
+    table.content?.forEach((row) => {
+      const cells = row.content ?? [];
+      for (let index = 0; index < cells.length; index += 1) {
+        const label = nodeText(cells[index]).trim().replace(".", "").toUpperCase();
+        if (["A", "B", "C", "D"].includes(label)) {
+          const nextLabelIndex = cells.findIndex((cell, cellIndex) => cellIndex > index && ["A", "B", "C", "D"].includes(nodeText(cell).trim().replace(".", "").toUpperCase()));
+          const endIndex = nextLabelIndex > -1 ? nextLabelIndex : cells.length;
+          optionContent.set(label, collectCellContent(cells.slice(0, endIndex), index + 1));
+          if (nextLabelIndex > -1) index = nextLabelIndex - 1;
+        }
+      }
+    });
+  };
+  const walk = (node: JSONContent) => {
+    if (node.type === "table" && node.attrs?.optionGroup) {
+      inspectTable(node);
+      return;
+    }
+    node.content?.forEach(walk);
+  };
+  walk(content);
+  return optionContent;
+}
+
+function optionLayoutContent(layout: string, preserved = new Map<string, JSONContent[]>(), existingAttrs: Record<string, unknown> = {}): JSONContent {
   const attrs = {
+    ...existingAttrs,
     optionGroup: true,
     optionLayout: layout,
-    optionBorders: layout === "table",
-    optionHeaders: layout === "table",
-    letterPlacement: "inline",
-    letterAlign: "center",
-    contentAlign: "left",
-    optionGap: 6,
-    cellPadding: "normal",
+    optionBorders: layout === "table" ? existingAttrs.optionBorders ?? true : false,
+    optionHeaders: layout === "table" ? existingAttrs.optionHeaders ?? true : false,
+    letterPlacement: existingAttrs.letterPlacement ?? "inline",
+    letterAlign: existingAttrs.letterAlign ?? "center",
+    contentAlign: existingAttrs.contentAlign ?? "left",
+    optionGap: existingAttrs.optionGap ?? 6,
+    cellPadding: existingAttrs.cellPadding ?? "normal",
   };
-  if (layout === "two_column" || layout === "grid") {
+  const labelCell = (label: string) => tableCellNode(label);
+  const answerCell = (label: string) => tableCellContentNode(preserved.get(label));
+  if (layout === "two_column") {
     return {
       type: "table",
       attrs,
       content: [
-        tableRowNode(["A", "", "B", ""]),
-        tableRowNode(["C", "", "D", ""]),
+        { type: "tableRow", content: [labelCell("A"), answerCell("A"), labelCell("B"), answerCell("B")] },
+        { type: "tableRow", content: [labelCell("C"), answerCell("C"), labelCell("D"), answerCell("D")] },
       ],
     };
   }
@@ -426,7 +474,7 @@ function optionLayoutContent(layout: string): JSONContent {
     return {
       type: "table",
       attrs,
-      content: [tableRowNode(["A", "", "B", "", "C", "", "D", ""])],
+      content: [{ type: "tableRow", content: [labelCell("A"), answerCell("A"), labelCell("B"), answerCell("B"), labelCell("C"), answerCell("C"), labelCell("D"), answerCell("D")] }],
     };
   }
   if (layout === "table") {
@@ -435,10 +483,10 @@ function optionLayoutContent(layout: string): JSONContent {
       attrs,
       content: [
         tableRowNode(["", { text: "heading 1", header: true }, { text: "heading 2", header: true }, { text: "heading 3", header: true }, { text: "heading 4", header: true }]),
-        tableRowNode(["A", "", "", "", ""]),
-        tableRowNode(["B", "", "", "", ""]),
-        tableRowNode(["C", "", "", "", ""]),
-        tableRowNode(["D", "", "", "", ""]),
+        { type: "tableRow", content: [labelCell("A"), answerCell("A"), tableCellNode(""), tableCellNode(""), tableCellNode("")] },
+        { type: "tableRow", content: [labelCell("B"), answerCell("B"), tableCellNode(""), tableCellNode(""), tableCellNode("")] },
+        { type: "tableRow", content: [labelCell("C"), answerCell("C"), tableCellNode(""), tableCellNode(""), tableCellNode("")] },
+        { type: "tableRow", content: [labelCell("D"), answerCell("D"), tableCellNode(""), tableCellNode(""), tableCellNode("")] },
       ],
     };
   }
@@ -446,10 +494,10 @@ function optionLayoutContent(layout: string): JSONContent {
     type: "table",
     attrs,
     content: [
-      tableRowNode(["A", ""]),
-      tableRowNode(["B", ""]),
-      tableRowNode(["C", ""]),
-      tableRowNode(["D", ""]),
+      { type: "tableRow", content: [labelCell("A"), answerCell("A")] },
+      { type: "tableRow", content: [labelCell("B"), answerCell("B")] },
+      { type: "tableRow", content: [labelCell("C"), answerCell("C")] },
+      { type: "tableRow", content: [labelCell("D"), answerCell("D")] },
     ],
   };
 }
@@ -571,6 +619,7 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
   const [newTopicName, setNewTopicName] = useState("");
   const [newTagName, setNewTagName] = useState("");
   const [openMetadataPicker, setOpenMetadataPicker] = useState<"topics" | "tags" | null>(null);
+  const [openControlDropdown, setOpenControlDropdown] = useState<"font" | "review" | null>(null);
   const [openEditorMenu, setOpenEditorMenu] = useState<"numbering" | "imageSize" | "imageFit" | null>(null);
   const [selectedImageWidth, setSelectedImageWidth] = useState<number | null>(null);
   const [selectedImageFit, setSelectedImageFit] = useState<"contain" | "cover" | null>(null);
@@ -626,12 +675,17 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
   useEffect(() => {
     function closeMetadataPicker(event: PointerEvent) {
       const target = event.target;
+      if (target instanceof Element && target.closest(".teacherdesk-select")) return;
       if (target instanceof Node && metadataPickerRef.current?.contains(target)) return;
       setOpenMetadataPicker(null);
+      setOpenControlDropdown(null);
     }
 
     function closeMetadataPickerOnEscape(event: KeyboardEvent) {
-      if (event.key === "Escape") setOpenMetadataPicker(null);
+      if (event.key === "Escape") {
+        setOpenMetadataPicker(null);
+        setOpenControlDropdown(null);
+      }
     }
 
     document.addEventListener("pointerdown", closeMetadataPicker, true);
@@ -644,6 +698,7 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
 
   useEffect(() => {
     setOpenMetadataPicker(null);
+    setOpenControlDropdown(null);
     setOpenEditorMenu(null);
   }, [step]);
 
@@ -1526,9 +1581,12 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
   }
 
   function replaceOptionLayout(layout: string) {
+    const currentContent = richEditor?.getJSON() ?? richContent;
+    const preserved = optionContentMapFromRichContent(currentContent);
+    const attrs = currentTableAttrs();
     setOptionLayout(layout);
-    setLayoutPreset(layout === "table" ? "table_options" : layout === "grid" ? "option_grid" : "standard");
-    setRichEditorContent(replaceFirstOptionGroup(richEditor?.getJSON() ?? richContent, optionLayoutContent(layout)));
+    setLayoutPreset(layout === "table" ? "table_options" : "standard");
+    setRichEditorContent(replaceFirstOptionGroup(currentContent, optionLayoutContent(layout, preserved, attrs)));
     setPendingOptionLayout(null);
   }
 
@@ -1538,7 +1596,8 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
       updateSelectedTableAttrs(attrs);
       return;
     }
-    setRichEditorContent(replaceFirstOptionGroup(richEditor?.getJSON() ?? richContent, { ...optionLayoutContent(optionLayout), attrs: { ...optionLayoutContent(optionLayout).attrs, ...attrs } }));
+    const currentContent = richEditor?.getJSON() ?? richContent;
+    setRichEditorContent(replaceFirstOptionGroup(currentContent, optionLayoutContent(optionLayout, optionContentMapFromRichContent(currentContent), attrs)));
   }
 
   function applyOptionGroupStateFromSelection() {
@@ -1861,7 +1920,6 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
 
       <section className="mcq-editor-grid">
         <div className="panel mcq-editor-panel refined">
-          <div className="step-tabs">{stepLabels.map((item) => <button className={step === item.value ? "active" : ""} key={item.value} onClick={() => setStep(item.value)}>{item.label}</button>)}</div>
           {status ? <div className="callout success">{status}</div> : null}
           {error ? <div className="callout error">{error}</div> : null}
 
@@ -1869,12 +1927,12 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
             <div className="mcq-step-panel">
               <div className="option-entry-grid compact-fields">
                 <label className="field-stack"><span>Marks</span><input type="number" min={0} value={marks} onChange={(event) => setMarks(Number(event.target.value || 1))} /></label>
-                <div className="field-stack review-status-control"><span>Review status</span><div className="review-status-pills">{metadata?.review_statuses.map((item) => <button className={reviewStatus === item.value ? "active" : ""} key={item.value} type="button" onClick={() => setReviewStatus(item.value as MCQReviewStatus)}>{item.label}</button>)}</div></div>
+                <div className="field-stack review-status-control"><span>Review status</span><div className={`teacherdesk-select ${openControlDropdown === "review" ? "open" : ""}`}><button type="button" onClick={() => setOpenControlDropdown(openControlDropdown === "review" ? null : "review")}>{metadata?.review_statuses.find((item) => item.value === reviewStatus)?.label ?? reviewStatus}</button>{openControlDropdown === "review" ? <div className="teacherdesk-select-menu">{metadata?.review_statuses.map((item) => <button className={reviewStatus === item.value ? "active" : ""} key={item.value} type="button" onClick={() => { setReviewStatus(item.value as MCQReviewStatus); setOpenControlDropdown(null); }}>{item.label}</button>)}</div> : null}</div></div>
               </div>
               <div className="section-intro compact"><strong>Write the question on the A4 canvas</strong><span>Type normally, insert equations with LaTeX shortcuts, and add images or tables where they belong.</span></div>
               <div className="paper-style-panel">
                 <div><strong>Paper style</strong><span>Saved with this question and mirrored in previews.</span></div>
-                <div className="paper-font-selector"><span>Face</span><div className="font-choice-strip">{paperFontOptions.map((font) => <button className={paperFontFamily === font ? "active" : ""} key={font} style={{ fontFamily: font }} type="button" onClick={() => setPaperFontFamily(font)}>{font}</button>)}</div></div>
+                <div className="paper-font-selector"><span>Face</span><div className={`teacherdesk-select ${openControlDropdown === "font" ? "open" : ""}`}><button style={{ fontFamily: paperFontFamily }} type="button" onClick={() => setOpenControlDropdown(openControlDropdown === "font" ? null : "font")}>{paperFontFamily}</button>{openControlDropdown === "font" ? <div className="teacherdesk-select-menu">{paperFontOptions.map((font) => <button className={paperFontFamily === font ? "active" : ""} key={font} style={{ fontFamily: font }} type="button" onClick={() => { setPaperFontFamily(font); setOpenControlDropdown(null); }}>{font}</button>)}</div> : null}</div></div>
                 <label><span>Font</span><input type="number" min={8} max={18} step={0.5} value={paperFontSizePt} onChange={(event) => setPaperFontSizePt(Number(event.target.value || 11))} /><em>pt</em></label>
                 <label><span>Equation</span><input type="number" min={0.75} max={1.4} step={0.05} value={equationScale} onChange={(event) => setEquationScale(Number(event.target.value || 1))} /><em>x</em></label>
               </div>
@@ -1943,8 +2001,8 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
                     <div className="answer-control-row">
                       <strong>Option letters</strong>
                       <button className={optionLabelPlacement === "inline" ? "active" : ""} type="button" onClick={() => { setOptionLabelPlacement("inline"); updateSelectedTableAttrs({ letterPlacement: "inline" }); }} title="Letters beside option content">A.</button>
-                      <button className={optionLabelPlacement === "above" ? "active" : ""} type="button" onClick={() => { setOptionLabelPlacement("above"); updateSelectedTableAttrs({ letterPlacement: "above" }); }} title="Letters above option content">A</button>
-                      <button className={optionLabelPlacement === "below" ? "active" : ""} type="button" onClick={() => { setOptionLabelPlacement("below"); updateSelectedTableAttrs({ letterPlacement: "below" }); }} title="Letters below option content">A↓</button>
+                      <button className={`letter-placement-icon above ${optionLabelPlacement === "above" ? "active" : ""}`} type="button" onClick={() => { setOptionLabelPlacement("above"); updateSelectedTableAttrs({ letterPlacement: "above" }); }} title="Letters above option content">A</button>
+                      <button className={`letter-placement-icon below ${optionLabelPlacement === "below" ? "active" : ""}`} type="button" onClick={() => { setOptionLabelPlacement("below"); updateSelectedTableAttrs({ letterPlacement: "below" }); }} title="Letters below option content">A</button>
                       <span className="ribbon-divider" />
                       <button className={optionLabelAlign === "left" ? "active" : ""} type="button" onClick={() => { setOptionLabelAlign("left"); updateSelectedTableAttrs({ letterAlign: "left" }); }} title="Align letters left"><AlignLeft size={15} /></button>
                       <button className={optionLabelAlign === "center" ? "active" : ""} type="button" onClick={() => { setOptionLabelAlign("center"); updateSelectedTableAttrs({ letterAlign: "center" }); }} title="Center letters"><AlignCenter size={15} /></button>
@@ -2191,20 +2249,20 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
         </div>
 
         <aside className="panel mcq-preview-panel sticky-preview">
-          <div className="side-metadata-panel top-metadata-panel">
+          <div ref={metadataPickerRef} className="side-metadata-panel top-metadata-panel">
             <div className="dashboard-widget-head"><div><strong>Question details</strong><span>Used for filtering, duplicate checks, and generated answer keys.</span></div></div>
             {!sourceQuestionNumber.trim() ? <div className="callout warning compact-callout">Original question number is empty.</div> : null}
             <div className="side-metadata-grid">
-              <label className="field-stack compact"><span>Subject</span><input value={subject} onChange={(event) => setSubject(event.target.value)} /></label>
-              <label className="field-stack compact"><span>Syllabus</span><input value={syllabus} onChange={(event) => setSyllabus(event.target.value)} /></label>
               <label className="field-stack compact wide"><span>Exam code</span><input value={examCode} onBlur={applyExamCodeDefaults} onChange={(event) => setExamCode(event.target.value)} placeholder="9702_w23_qp_11" /></label>
-              <label className="field-stack compact"><span>Paper</span><input value={paperCode} onChange={(event) => setPaperCode(event.target.value)} placeholder="Paper 1" /></label>
-              <label className="field-stack compact"><span>Session</span><input value={session} onChange={(event) => setSession(event.target.value)} placeholder="Oct/Nov" /></label>
-              <label className="field-stack compact"><span>Year</span><input value={year} onChange={(event) => setYear(event.target.value)} placeholder="2023" /></label>
-              <label className="field-stack compact"><span>Source</span><input value={source} onChange={(event) => setSource(event.target.value)} placeholder="Cambridge" /></label>
               <label className="field-stack compact"><span>Original question</span><div className="prefixed-input"><span>Q</span><input value={sourceQuestionNumber} onChange={(event) => setSourceQuestionNumber(sourceQuestionDigits(event.target.value))} placeholder="12" /></div></label>
               <label className="field-stack compact"><span>Difficulty</span><select className="styled-select" value={difficulty} onChange={(event) => setDifficulty(event.target.value)}>{difficultyOptions.map((item) => <option key={item} value={item}>{item}</option>)}</select></label>
             </div>
+            <div className="metadata-picker-zone compact-side">
+              {renderMetadataPicker("topics", "Topics", newTopicName, setNewTopicName, metadata?.topics ?? [], topicIds, setTopicIds, saveQuickTopic, "Search or add a topic")}
+              {visibleSubtopics.length ? <div className="metadata-picker compact-combo"><strong>Subtopics</strong><div className="checkbox-chip-grid">{visibleSubtopics.map((subtopic) => <button className={subtopicIds.includes(subtopic.id) ? "active" : ""} key={subtopic.id} type="button" onClick={() => toggleNumberValue(subtopic.id, subtopicIds, setSubtopicIds)}><Check size={14} />{subtopic.name}</button>)}</div></div> : null}
+              {renderMetadataPicker("tags", "Tags", newTagName, setNewTagName, metadata?.tags ?? [], tagIds, setTagIds, saveQuickTag, "Search or add a tag")}
+            </div>
+            <label className="field-stack compact"><span>Teacher notes</span><textarea value={teacherNotes} onChange={(event) => setTeacherNotes(event.target.value)} placeholder="Private notes for review, source details, or teaching remarks." /></label>
           </div>
           <div className="dashboard-widget-head"><div><strong>A4 live preview</strong><span>Student-facing layout, using your selected structure.</span></div></div>
           <div className="a4-preview-viewport" ref={previewScaleRef}>
@@ -2230,15 +2288,6 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
             </div>
           </div>
           <div className="metadata-mini"><span><Check size={15} />{reviewStatus.replace("_", " ")}</span><span>{marks} mark</span><span>{optionLayout.replace("_", " ")}</span></div>
-          <div ref={metadataPickerRef} className="side-metadata-panel tag-metadata-panel">
-            <div className="dashboard-widget-head"><div><strong>Topics and notes</strong><span>Keep classification separate from the writing surface.</span></div></div>
-            <div className="metadata-picker-zone compact-side">
-              {renderMetadataPicker("topics", "Topics", newTopicName, setNewTopicName, metadata?.topics ?? [], topicIds, setTopicIds, saveQuickTopic, "Search or add a topic")}
-              {visibleSubtopics.length ? <div className="metadata-picker compact-combo"><strong>Subtopics</strong><div className="checkbox-chip-grid">{visibleSubtopics.map((subtopic) => <button className={subtopicIds.includes(subtopic.id) ? "active" : ""} key={subtopic.id} type="button" onClick={() => toggleNumberValue(subtopic.id, subtopicIds, setSubtopicIds)}><Check size={14} />{subtopic.name}</button>)}</div></div> : null}
-              {renderMetadataPicker("tags", "Tags", newTagName, setNewTagName, metadata?.tags ?? [], tagIds, setTagIds, saveQuickTag, "Search or add a tag")}
-            </div>
-            <label className="field-stack compact"><span>Teacher notes</span><textarea value={teacherNotes} onChange={(event) => setTeacherNotes(event.target.value)} placeholder="Private notes for review, source details, or teaching remarks." /></label>
-          </div>
         </aside>
       </section>
     </>
