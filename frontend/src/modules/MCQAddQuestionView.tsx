@@ -111,7 +111,6 @@ type MCQQuestionDetailPayload = {
 
 const stepLabels: Array<{ value: EditorStep; label: string }> = [
   { value: "question", label: "Question" },
-  { value: "metadata", label: "Metadata" },
 ];
 
 const metadataDefaultsKey = "teacherdesk.mcq.lastMetadata";
@@ -122,6 +121,21 @@ const optionLayoutVisuals = [
   { value: "four_column", title: "Four", subtitle: "A B C D", className: "four-column" },
   { value: "grid", title: "Image grid", subtitle: "visual answers", className: "grid" },
   { value: "table", title: "Table", subtitle: "A-D rows", className: "table" },
+];
+
+const answerLayoutModes = [
+  {
+    value: "standard",
+    title: "Standard choices",
+    subtitle: "A-D answers with text, equations, or images",
+    layouts: ["single", "two_column", "four_column", "grid"],
+  },
+  {
+    value: "table",
+    title: "Answer table",
+    subtitle: "A-D rows with optional heading columns",
+    layouts: ["table"],
+  },
 ];
 
 const paperFontOptions = ["Calibri", "Arial", "Times New Roman", "Cambria", "Segoe UI"];
@@ -1366,7 +1380,7 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
     }
     const normalizedSourceQuestion = normalizeSourceQuestion(sourceQuestionNumber);
     if (!normalizedSourceQuestion && !confirm("Original question number is empty. This is useful when entering many questions from the same paper. Save anyway?")) {
-      setStep("metadata");
+      setStep("question");
       return;
     }
     setIsSaving(true);
@@ -1382,7 +1396,7 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
         const overwrite = confirm(`${caught.message}\n\nOverwrite the existing question with this version? Choose Cancel to keep the existing question unchanged.`);
         if (!overwrite) {
           setError("Save cancelled. The existing question was kept unchanged.");
-          setStep("metadata");
+          setStep("question");
           return;
         }
         try {
@@ -1856,12 +1870,12 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
             <div className="mcq-step-panel">
               <div className="option-entry-grid compact-fields">
                 <label className="field-stack"><span>Marks</span><input type="number" min={0} value={marks} onChange={(event) => setMarks(Number(event.target.value || 1))} /></label>
-                <label className="field-stack"><span>Review status</span><select value={reviewStatus} onChange={(event) => setReviewStatus(event.target.value as MCQReviewStatus)}>{metadata?.review_statuses.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
+                <div className="field-stack review-status-control"><span>Review status</span><div className="review-status-pills">{metadata?.review_statuses.map((item) => <button className={reviewStatus === item.value ? "active" : ""} key={item.value} type="button" onClick={() => setReviewStatus(item.value as MCQReviewStatus)}>{item.label}</button>)}</div></div>
               </div>
               <div className="section-intro compact"><strong>Write the question on the A4 canvas</strong><span>Type normally, insert equations with LaTeX shortcuts, and add images or tables where they belong.</span></div>
               <div className="paper-style-panel">
                 <div><strong>Paper style</strong><span>Saved with this question and mirrored in previews.</span></div>
-                <label><span>Face</span><select value={paperFontFamily} onChange={(event) => setPaperFontFamily(event.target.value)}>{paperFontOptions.map((font) => <option key={font} value={font}>{font}</option>)}</select></label>
+                <div className="paper-font-selector"><span>Face</span><div className="font-choice-strip">{paperFontOptions.map((font) => <button className={paperFontFamily === font ? "active" : ""} key={font} style={{ fontFamily: font }} type="button" onClick={() => setPaperFontFamily(font)}>{font}</button>)}</div></div>
                 <label><span>Font</span><input type="number" min={8} max={18} step={0.5} value={paperFontSizePt} onChange={(event) => setPaperFontSizePt(Number(event.target.value || 11))} /><em>pt</em></label>
                 <label><span>Equation</span><input type="number" min={0.75} max={1.4} step={0.05} value={equationScale} onChange={(event) => setEquationScale(Number(event.target.value || 1))} /><em>x</em></label>
               </div>
@@ -1915,29 +1929,56 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
                       {ribbonMode === "optionTable" ? <button className={selectedTableAttrs.optionBorders !== false && selectedTableAttrs.optionBorders !== "false" ? "active" : ""} type="button" onClick={() => updateSelectedTableAttrs({ optionBorders: !(selectedTableAttrs.optionBorders !== false && selectedTableAttrs.optionBorders !== "false") })}>Borders</button> : null}
                     </>
                   ) : null}
-                  {ribbonMode === "optionGroup" || ribbonMode === "optionTable" ? (
-                    <>
-                      <div className="correct-answer-pill-group" aria-label="Correct answer">
-                        <span>Correct</span>
-                        {["A", "B", "C", "D"].map((label) => <button className={correctOption === label ? "active" : ""} key={label} type="button" onClick={() => setCorrectOption(label)}>{label}</button>)}
-                      </div>
-                      <button className={optionLabelPlacement === "inline" ? "active" : ""} type="button" onClick={() => { setOptionLabelPlacement("inline"); updateSelectedTableAttrs({ letterPlacement: "inline" }); }}>A.</button>
-                      <button className={optionLabelPlacement === "above" ? "active" : ""} type="button" onClick={() => { setOptionLabelPlacement("above"); updateSelectedTableAttrs({ letterPlacement: "above" }); }}>A</button>
-                      <button className={optionContentAlign === "left" ? "active" : ""} type="button" onClick={() => { setOptionContentAlign("left"); updateSelectedTableAttrs({ contentAlign: "left" }); }} title="Align option content left"><AlignLeft size={15} /></button>
-                      <button className={optionContentAlign === "center" ? "active" : ""} type="button" onClick={() => { setOptionContentAlign("center"); updateSelectedTableAttrs({ contentAlign: "center" }); }} title="Center option content"><AlignCenter size={15} /></button>
-                      <button className={optionContentAlign === "right" ? "active" : ""} type="button" onClick={() => { setOptionContentAlign("right"); updateSelectedTableAttrs({ contentAlign: "right" }); }} title="Align option content right"><AlignRight size={15} /></button>
-                      <label className="ribbon-range-label"><span>Indent</span><input type="range" min={0} max={24} value={optionGapPx} onChange={(event) => { const next = Number(event.target.value); setOptionGapPx(next); updateSelectedTableAttrs({ optionGap: next }); }} /><em>{optionGapPx}px</em></label>
-                    </>
-                  ) : null}
                   <span className="ribbon-divider" />
                   <button type="button" onClick={() => richEditor?.chain().focus().undo().run()} title="Undo"><Undo2 size={16} /></button>
                   <button type="button" onClick={() => richEditor?.chain().focus().redo().run()} title="Redo"><Redo2 size={16} /></button>
                 </div>
+                {ribbonMode === "optionGroup" || ribbonMode === "optionTable" ? (
+                  <div className="embedded-option-controls">
+                    <div className="answer-control-row correct-row">
+                      <strong>Correct answer</strong>
+                      <div className="correct-answer-pill-group" aria-label="Correct answer">
+                        {["A", "B", "C", "D"].map((label) => <button className={correctOption === label ? "active" : ""} key={label} type="button" onClick={() => setCorrectOption(label)}>{label}</button>)}
+                      </div>
+                    </div>
+                    <div className="answer-control-row">
+                      <strong>Option letters</strong>
+                      <button className={optionLabelPlacement === "inline" ? "active" : ""} type="button" onClick={() => { setOptionLabelPlacement("inline"); updateSelectedTableAttrs({ letterPlacement: "inline" }); }} title="Letters beside option content">A.</button>
+                      <button className={optionLabelPlacement === "above" ? "active" : ""} type="button" onClick={() => { setOptionLabelPlacement("above"); updateSelectedTableAttrs({ letterPlacement: "above" }); }} title="Letters above option content">A</button>
+                      <span className="ribbon-divider" />
+                      <button className={optionLabelAlign === "left" ? "active" : ""} type="button" onClick={() => { setOptionLabelAlign("left"); updateSelectedTableAttrs({ letterAlign: "left" }); }} title="Align letters left"><AlignLeft size={15} /></button>
+                      <button className={optionLabelAlign === "center" ? "active" : ""} type="button" onClick={() => { setOptionLabelAlign("center"); updateSelectedTableAttrs({ letterAlign: "center" }); }} title="Center letters"><AlignCenter size={15} /></button>
+                      <button className={optionLabelAlign === "right" ? "active" : ""} type="button" onClick={() => { setOptionLabelAlign("right"); updateSelectedTableAttrs({ letterAlign: "right" }); }} title="Align letters right"><AlignRight size={15} /></button>
+                    </div>
+                    <div className="answer-control-row">
+                      <strong>Option content</strong>
+                      <button className={optionContentAlign === "left" ? "active" : ""} type="button" onClick={() => { setOptionContentAlign("left"); updateSelectedTableAttrs({ contentAlign: "left" }); }} title="Align option content left"><AlignLeft size={15} /></button>
+                      <button className={optionContentAlign === "center" ? "active" : ""} type="button" onClick={() => { setOptionContentAlign("center"); updateSelectedTableAttrs({ contentAlign: "center" }); }} title="Center option content"><AlignCenter size={15} /></button>
+                      <button className={optionContentAlign === "right" ? "active" : ""} type="button" onClick={() => { setOptionContentAlign("right"); updateSelectedTableAttrs({ contentAlign: "right" }); }} title="Align option content right"><AlignRight size={15} /></button>
+                      <label className="ribbon-range-label"><span>Indent</span><input type="range" min={0} max={24} value={optionGapPx} onChange={(event) => { const next = Number(event.target.value); setOptionGapPx(next); updateSelectedTableAttrs({ optionGap: next }); }} /><em>{optionGapPx}px</em></label>
+                    </div>
+                    {ribbonMode === "optionGroup" ? (
+                      <div className="answer-control-row">
+                        <strong>Columns</strong>
+                        {optionLayoutVisuals.filter((item) => item.value !== "table").map((item) => (
+                          <button className={optionLayout === item.value ? "active" : ""} key={item.value} type="button" onClick={() => requestOptionLayout(item.value)} title={item.subtitle}>{item.title}</button>
+                        ))}
+                      </div>
+                    ) : null}
+                    {ribbonMode === "optionTable" ? (
+                      <div className="answer-control-row">
+                        <strong>Table style</strong>
+                        <button className={selectedTableAttrs.optionBorders !== false && selectedTableAttrs.optionBorders !== "false" ? "active" : ""} type="button" onClick={() => updateSelectedTableAttrs({ optionBorders: !(selectedTableAttrs.optionBorders !== false && selectedTableAttrs.optionBorders !== "false") })}>Borders</button>
+                        <button className={selectedTableAttrs.optionHeaders !== false && selectedTableAttrs.optionHeaders !== "false" ? "active" : ""} type="button" onClick={() => updateSelectedTableAttrs({ optionHeaders: !(selectedTableAttrs.optionHeaders !== false && selectedTableAttrs.optionHeaders !== "false") })}>Headers</button>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
                 <div className="insert-options-ribbon">
                   <strong>Answer layout</strong>
-                  {optionLayoutVisuals.map((item) => (
-                    <button className={optionLayout === item.value ? "active" : ""} key={item.value} onClick={() => requestOptionLayout(item.value)} title={item.subtitle} type="button">
-                      <span className={`option-layout-thumbnail ${item.className}`}><i /><i /><i /><i /></span>
+                  {answerLayoutModes.map((item) => (
+                    <button className={(item.value === "table" ? optionLayout === "table" : optionLayout !== "table") ? "active" : ""} key={item.value} onClick={() => requestOptionLayout(item.value === "table" ? "table" : (optionLayout === "table" ? "four_column" : optionLayout))} title={item.subtitle} type="button">
+                      <span className={`option-layout-thumbnail ${item.value === "table" ? "table" : "four-column"}`}><i /><i /><i /><i /></span>
                       <span><b>{item.title}</b><small>{item.subtitle}</small></span>
                     </button>
                   ))}
@@ -2146,7 +2187,7 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
             </div>
           ) : null}
 
-          <div className="mcq-bottom-controls"><button className="secondary-action" disabled={step === "question"} onClick={() => setStep(stepLabels[Math.max(stepLabels.findIndex((item) => item.value === step) - 1, 0)].value)}>Back</button><button className="secondary-action" disabled={step === "metadata"} onClick={() => setStep(stepLabels[Math.min(stepLabels.findIndex((item) => item.value === step) + 1, stepLabels.length - 1)].value)}>Continue</button><button className="secondary-action" disabled={isSaving} onClick={() => saveQuestion(false)}><Save size={16} />Save</button><button className="primary-action" disabled={isSaving} onClick={() => saveQuestion(true)}><Plus size={16} />Save and add another</button></div>
+          <div className="mcq-bottom-controls">{stepLabels.length > 1 ? <button className="secondary-action" disabled={step === "question"} onClick={() => setStep(stepLabels[Math.max(stepLabels.findIndex((item) => item.value === step) - 1, 0)].value)}>Back</button> : null}{stepLabels.length > 1 ? <button className="secondary-action" disabled={step === "metadata"} onClick={() => setStep(stepLabels[Math.min(stepLabels.findIndex((item) => item.value === step) + 1, stepLabels.length - 1)].value)}>Continue</button> : null}<button className="secondary-action" disabled={isSaving} onClick={() => saveQuestion(false)}><Save size={16} />Save</button><button className="primary-action" disabled={isSaving} onClick={() => saveQuestion(true)}><Plus size={16} />Save and add another</button></div>
         </div>
 
         <aside className="panel mcq-preview-panel sticky-preview">
@@ -2187,6 +2228,27 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
             </div>
           </div>
           <div className="metadata-mini"><span><Check size={15} />{reviewStatus.replace("_", " ")}</span><span>{marks} mark</span><span>{optionLayout.replace("_", " ")}</span></div>
+          <div ref={metadataPickerRef} className="side-metadata-panel">
+            <div className="dashboard-widget-head"><div><strong>Question metadata</strong><span>Saved with this question for filtering and exam generation.</span></div></div>
+            {!sourceQuestionNumber.trim() ? <div className="callout warning compact-callout">Original question number is empty.</div> : null}
+            <div className="side-metadata-grid">
+              <label className="field-stack compact"><span>Subject</span><input value={subject} onChange={(event) => setSubject(event.target.value)} /></label>
+              <label className="field-stack compact"><span>Syllabus</span><input value={syllabus} onChange={(event) => setSyllabus(event.target.value)} /></label>
+              <label className="field-stack compact wide"><span>Exam code</span><input value={examCode} onBlur={applyExamCodeDefaults} onChange={(event) => setExamCode(event.target.value)} placeholder="9702_w23_qp_11" /></label>
+              <label className="field-stack compact"><span>Paper</span><input value={paperCode} onChange={(event) => setPaperCode(event.target.value)} placeholder="Paper 1" /></label>
+              <label className="field-stack compact"><span>Session</span><input value={session} onChange={(event) => setSession(event.target.value)} placeholder="Oct/Nov" /></label>
+              <label className="field-stack compact"><span>Year</span><input value={year} onChange={(event) => setYear(event.target.value)} placeholder="2023" /></label>
+              <label className="field-stack compact"><span>Source</span><input value={source} onChange={(event) => setSource(event.target.value)} placeholder="Cambridge" /></label>
+              <label className="field-stack compact"><span>Original question</span><div className="prefixed-input"><span>Q</span><input value={sourceQuestionNumber} onChange={(event) => setSourceQuestionNumber(sourceQuestionDigits(event.target.value))} placeholder="12" /></div></label>
+              <label className="field-stack compact"><span>Difficulty</span><select className="styled-select" value={difficulty} onChange={(event) => setDifficulty(event.target.value)}>{difficultyOptions.map((item) => <option key={item} value={item}>{item}</option>)}</select></label>
+            </div>
+            <div className="metadata-picker-zone compact-side">
+              {renderMetadataPicker("topics", "Topics", newTopicName, setNewTopicName, metadata?.topics ?? [], topicIds, setTopicIds, saveQuickTopic, "Search or add a topic")}
+              {visibleSubtopics.length ? <div className="metadata-picker compact-combo"><strong>Subtopics</strong><div className="checkbox-chip-grid">{visibleSubtopics.map((subtopic) => <button className={subtopicIds.includes(subtopic.id) ? "active" : ""} key={subtopic.id} type="button" onClick={() => toggleNumberValue(subtopic.id, subtopicIds, setSubtopicIds)}><Check size={14} />{subtopic.name}</button>)}</div></div> : null}
+              {renderMetadataPicker("tags", "Tags", newTagName, setNewTagName, metadata?.tags ?? [], tagIds, setTagIds, saveQuickTag, "Search or add a tag")}
+            </div>
+            <label className="field-stack compact"><span>Teacher notes</span><textarea value={teacherNotes} onChange={(event) => setTeacherNotes(event.target.value)} placeholder="Private notes for review, source details, or teaching remarks." /></label>
+          </div>
         </aside>
       </section>
     </>
