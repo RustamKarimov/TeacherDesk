@@ -39,6 +39,7 @@ type OptionLabelPlacement = "inline" | "above";
 type OptionLabelAlign = "left" | "center" | "right";
 type OptionContentAlign = "left" | "center" | "right";
 type ExtractedOption = { label: string; text: string };
+type RibbonMode = "text" | "image" | "table" | "optionGroup" | "optionTable" | "optionImage";
 type LastMetadataDefaults = {
   subject: string;
   syllabus: string;
@@ -107,7 +108,7 @@ type MCQQuestionDetailPayload = {
 };
 
 const stepLabels: Array<{ value: EditorStep; label: string }> = [
-  { value: "question", label: "Question & options" },
+  { value: "question", label: "Question" },
   { value: "metadata", label: "Metadata" },
 ];
 
@@ -186,6 +187,59 @@ const RichImage = TiptapImage.extend({
   },
 });
 
+const RichTable = TiptapTable.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      optionGroup: {
+        default: false,
+        parseHTML: (element) => element.getAttribute("data-mcq-option-group") === "true",
+        renderHTML: (attributes) => (attributes.optionGroup ? { "data-mcq-option-group": "true" } : {}),
+      },
+      optionLayout: {
+        default: null,
+        parseHTML: (element) => element.getAttribute("data-option-layout"),
+        renderHTML: (attributes) => (attributes.optionLayout ? { "data-option-layout": attributes.optionLayout } : {}),
+      },
+      optionBorders: {
+        default: null,
+        parseHTML: (element) => element.getAttribute("data-option-borders"),
+        renderHTML: (attributes) => (attributes.optionBorders === null || attributes.optionBorders === undefined ? {} : { "data-option-borders": String(attributes.optionBorders) }),
+      },
+      optionHeaders: {
+        default: null,
+        parseHTML: (element) => element.getAttribute("data-option-headers"),
+        renderHTML: (attributes) => (attributes.optionHeaders === null || attributes.optionHeaders === undefined ? {} : { "data-option-headers": String(attributes.optionHeaders) }),
+      },
+      letterPlacement: {
+        default: null,
+        parseHTML: (element) => element.getAttribute("data-option-letter-placement"),
+        renderHTML: (attributes) => (attributes.letterPlacement ? { "data-option-letter-placement": attributes.letterPlacement } : {}),
+      },
+      letterAlign: {
+        default: null,
+        parseHTML: (element) => element.getAttribute("data-option-letter-align"),
+        renderHTML: (attributes) => (attributes.letterAlign ? { "data-option-letter-align": attributes.letterAlign } : {}),
+      },
+      contentAlign: {
+        default: null,
+        parseHTML: (element) => element.getAttribute("data-option-content-align"),
+        renderHTML: (attributes) => (attributes.contentAlign ? { "data-option-content-align": attributes.contentAlign } : {}),
+      },
+      optionGap: {
+        default: null,
+        parseHTML: (element) => element.getAttribute("data-option-gap"),
+        renderHTML: (attributes) => (attributes.optionGap === null || attributes.optionGap === undefined ? {} : { "data-option-gap": String(attributes.optionGap) }),
+      },
+      cellPadding: {
+        default: null,
+        parseHTML: (element) => element.getAttribute("data-option-cell-padding"),
+        renderHTML: (attributes) => (attributes.cellPadding ? { "data-option-cell-padding": attributes.cellPadding } : {}),
+      },
+    };
+  },
+});
+
 function clipboardImageFile(event: { clipboardData: DataTransfer | null }): File | null {
   if (!event.clipboardData) return null;
   const item = Array.from(event.clipboardData.items).find((entry) => entry.kind === "file" && entry.type.startsWith("image/"));
@@ -247,19 +301,27 @@ function optionLabelFromText(value: string) {
 
 function extractOptionsFromRichContent(content: JSONContent): ExtractedOption[] {
   const found = new Map<string, string>();
+  let hasOptionGroup = false;
   const capture = (label: string, text: string) => {
     if (!label || !/^[A-Z]$/.test(label)) return;
     const clean = text.replace(new RegExp(`^${label}[.)\\s]*`), "").trim();
     found.set(label, clean);
   };
-  const walk = (node?: JSONContent) => {
+  const scanForOptionGroup = (node?: JSONContent): boolean => {
+    if (!node) return false;
+    if (node.type === "table" && node.attrs?.optionGroup) return true;
+    return Boolean(node.content?.some(scanForOptionGroup));
+  };
+  hasOptionGroup = scanForOptionGroup(content);
+  const walk = (node?: JSONContent, insideOptionGroup = false) => {
     if (!node) return;
-    if (node.type === "paragraph") {
+    const isOptionGroup = insideOptionGroup || (node.type === "table" && Boolean(node.attrs?.optionGroup));
+    if (!hasOptionGroup && node.type === "paragraph") {
       const text = richNodeText(node);
       const label = optionLabelFromText(text);
       if (label) capture(label, text);
     }
-    if (node.type === "tableRow") {
+    if (node.type === "tableRow" && (!hasOptionGroup || isOptionGroup)) {
       const cells = node.content ?? [];
       for (let index = 0; index < cells.length; index += 1) {
         const text = richNodeText(cells[index]);
@@ -270,7 +332,7 @@ function extractOptionsFromRichContent(content: JSONContent): ExtractedOption[] 
         }
       }
     }
-    node.content?.forEach(walk);
+    node.content?.forEach((child) => walk(child, isOptionGroup));
   };
   walk(content);
   return ["A", "B", "C", "D"].map((label) => ({ label, text: found.get(label) ?? "" }));
@@ -292,9 +354,21 @@ function tableRowNode(cells: Array<string | { text: string; header?: boolean }>)
 }
 
 function optionLayoutContent(layout: string): JSONContent {
+  const attrs = {
+    optionGroup: true,
+    optionLayout: layout,
+    optionBorders: layout === "table",
+    optionHeaders: layout === "table",
+    letterPlacement: "inline",
+    letterAlign: "center",
+    contentAlign: "left",
+    optionGap: 6,
+    cellPadding: "normal",
+  };
   if (layout === "two_column" || layout === "grid") {
     return {
       type: "table",
+      attrs,
       content: [
         tableRowNode(["A", "", "B", ""]),
         tableRowNode(["C", "", "D", ""]),
@@ -304,12 +378,14 @@ function optionLayoutContent(layout: string): JSONContent {
   if (layout === "four_column") {
     return {
       type: "table",
+      attrs,
       content: [tableRowNode(["A", "", "B", "", "C", "", "D", ""])],
     };
   }
   if (layout === "table") {
     return {
       type: "table",
+      attrs,
       content: [
         tableRowNode(["", { text: "heading 1", header: true }, { text: "heading 2", header: true }, { text: "heading 3", header: true }, { text: "heading 4", header: true }]),
         tableRowNode(["A", "", "", "", ""]),
@@ -321,6 +397,7 @@ function optionLayoutContent(layout: string): JSONContent {
   }
   return {
     type: "table",
+    attrs,
     content: [
       tableRowNode(["A", ""]),
       tableRowNode(["B", ""]),
@@ -456,6 +533,9 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
   const [equationScale, setEquationScale] = useState(1);
   const [optionGapPx, setOptionGapPx] = useState(6);
   const [bulkOptionImageWidth, setBulkOptionImageWidth] = useState(60);
+  const [customImageWidth, setCustomImageWidth] = useState(60);
+  const [pendingOptionLayout, setPendingOptionLayout] = useState<string | null>(null);
+  const [selectionRevision, setSelectionRevision] = useState(0);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -519,6 +599,10 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
     setOpenEditorMenu(null);
   }, [step]);
 
+  useEffect(() => {
+    applyOptionGroupStateFromSelection();
+  }, [selectionRevision]);
+
   const richEditor = useEditor({
     extensions: [
       StarterKit,
@@ -527,7 +611,7 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
         placeholder: "Write the question here. Use $v = u + at$ for inline equations, or insert images and tables from the toolbar.",
       }),
       RichImage.configure({ allowBase64: false, inline: false }),
-      TiptapTable.configure({ resizable: true }),
+      RichTable.configure({ resizable: true }),
       TableRow,
       TableHeader,
       TableCell,
@@ -558,6 +642,7 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
     },
     onSelectionUpdate: ({ editor }) => {
       refreshSelectedImageState(editor);
+      setSelectionRevision((value) => value + 1);
     },
   });
 
@@ -610,6 +695,54 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
       setRichHtml(richEditor.getHTML());
       setRichText(richEditor.getText({ blockSeparator: "\n" }));
     }
+  }
+
+  function syncRichEditorState() {
+    if (!richEditor) return;
+    setRichContent(richEditor.getJSON());
+    setRichHtml(richEditor.getHTML());
+    setRichText(richEditor.getText({ blockSeparator: "\n" }));
+    setSelectionRevision((value) => value + 1);
+  }
+
+  function richContentHasOptionGroup(content = richContent) {
+    const walk = (node?: JSONContent): boolean => {
+      if (!node) return false;
+      if (node.type === "table" && node.attrs?.optionGroup) return true;
+      return Boolean(node.content?.some(walk));
+    };
+    return walk(content);
+  }
+
+  function replaceFirstOptionGroup(content: JSONContent, replacement: JSONContent): JSONContent {
+    let replaced = false;
+    const walk = (node: JSONContent): JSONContent => {
+      if (!replaced && node.type === "table" && node.attrs?.optionGroup) {
+        replaced = true;
+        return replacement;
+      }
+      return node.content ? { ...node, content: node.content.map(walk) } : node;
+    };
+    return walk(content);
+  }
+
+  function currentTableAttrs() {
+    return richEditor?.getAttributes("table") ?? {};
+  }
+
+  function selectedTableIsOptionGroup() {
+    return Boolean(currentTableAttrs().optionGroup);
+  }
+
+  function updateSelectedTableAttrs(attrs: Record<string, unknown>) {
+    richEditor?.chain().focus().updateAttributes("table", attrs).run();
+    syncRichEditorState();
+  }
+
+  function runTableCommand(command: string) {
+    const chain = richEditor?.chain().focus() as unknown as Record<string, () => { run: () => void }>;
+    chain?.[command]?.().run();
+    syncRichEditorState();
   }
 
   function refreshSelectedImageState(editor = richEditor) {
@@ -1233,6 +1366,7 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
   function setEditorImageSize(width: number) {
     richEditor?.chain().focus().updateAttributes("image", { width }).run();
     setSelectedImageWidth(width);
+    setCustomImageWidth(width);
     if (richEditor) {
       setRichContent(richEditor.getJSON());
       setRichHtml(richEditor.getHTML());
@@ -1265,11 +1399,49 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
   function insertOptionLayout(layout: string) {
     setOptionLayout(layout);
     setLayoutPreset(layout === "table" ? "table_options" : layout === "grid" ? "option_grid" : "standard");
+    const optionContent = optionLayoutContent(layout);
     richEditor?.chain().focus().insertContent([
       paragraphNode(""),
-      optionLayoutContent(layout),
+      optionContent,
       paragraphNode(""),
     ]).run();
+    syncRichEditorState();
+  }
+
+  function requestOptionLayout(layout: string) {
+    if (richContentHasOptionGroup()) {
+      setPendingOptionLayout(layout);
+      return;
+    }
+    insertOptionLayout(layout);
+  }
+
+  function replaceOptionLayout(layout: string) {
+    setOptionLayout(layout);
+    setLayoutPreset(layout === "table" ? "table_options" : layout === "grid" ? "option_grid" : "standard");
+    setRichEditorContent(replaceFirstOptionGroup(richEditor?.getJSON() ?? richContent, optionLayoutContent(layout)));
+    setPendingOptionLayout(null);
+  }
+
+  function updateOptionGroupSetting(attrs: Record<string, unknown>) {
+    const current = currentTableAttrs();
+    if (current.optionGroup) {
+      updateSelectedTableAttrs(attrs);
+      return;
+    }
+    setRichEditorContent(replaceFirstOptionGroup(richEditor?.getJSON() ?? richContent, { ...optionLayoutContent(optionLayout), attrs: { ...optionLayoutContent(optionLayout).attrs, ...attrs } }));
+  }
+
+  function applyOptionGroupStateFromSelection() {
+    const attrs = currentTableAttrs();
+    if (!attrs.optionGroup) return;
+    if (typeof attrs.optionLayout === "string") setOptionLayout(attrs.optionLayout);
+    if (typeof attrs.letterPlacement === "string") setOptionLabelPlacement(attrs.letterPlacement === "above" ? "above" : "inline");
+    if (["left", "center", "right"].includes(String(attrs.letterAlign))) setOptionLabelAlign(attrs.letterAlign as OptionLabelAlign);
+    if (["left", "center", "right"].includes(String(attrs.contentAlign))) setOptionContentAlign(attrs.contentAlign as OptionContentAlign);
+    setTableShowBorders(attrs.optionBorders !== false && attrs.optionBorders !== "false");
+    setTableShowHeaders(attrs.optionHeaders !== false && attrs.optionHeaders !== "false");
+    if (attrs.optionGap !== null && attrs.optionGap !== undefined) setOptionGapPx(Number(attrs.optionGap) || 6);
   }
 
   async function uploadEditorImage(file: File | null) {
@@ -1543,6 +1715,29 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
     );
   }
 
+  const selectedTableAttrs = currentTableAttrs();
+  const isInTable = Boolean(richEditor?.isActive("table"));
+  const isOptionGroup = Boolean(selectedTableAttrs.optionGroup);
+  const ribbonMode: RibbonMode = selectedImageWidth && isOptionGroup
+    ? "optionImage"
+    : selectedImageWidth
+      ? "image"
+      : isOptionGroup && selectedTableAttrs.optionLayout === "table"
+        ? "optionTable"
+        : isOptionGroup
+          ? "optionGroup"
+          : isInTable
+            ? "table"
+            : "text";
+  const ribbonTitle: Record<RibbonMode, string> = {
+    text: "Text",
+    image: "Question image",
+    table: "Question table",
+    optionGroup: "Answer options",
+    optionTable: "Option table",
+    optionImage: "Option image",
+  };
+
   return (
     <>
       <section className="content-header">
@@ -1573,57 +1768,89 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
                 <label><span>Font</span><input type="number" min={8} max={18} step={0.5} value={paperFontSizePt} onChange={(event) => setPaperFontSizePt(Number(event.target.value || 11))} /><em>pt</em></label>
                 <label><span>Equation</span><input type="number" min={0.75} max={1.4} step={0.05} value={equationScale} onChange={(event) => setEquationScale(Number(event.target.value || 1))} /><em>x</em></label>
               </div>
-              <div className="embedded-option-toolbar">
-                <div>
-                  <strong>Answer options inside the A4 editor</strong>
-                  <span>Insert an A-D structure, then type directly in the white page. TeacherDesk reads A-D from the editor for answer keys and shuffling rules.</span>
+              <div className="rich-editor-shell">
+                <div className={`rich-editor-toolbar contextual-ribbon mode-${ribbonMode}`}>
+                  <span className="ribbon-mode-chip">{ribbonTitle[ribbonMode]}</span>
+                  {ribbonMode === "text" ? (
+                    <>
+                      <button className={richEditor?.isActive("bold") ? "active" : ""} type="button" onClick={() => richEditor?.chain().focus().toggleBold().run()} title="Bold"><Bold size={16} /></button>
+                      <button className={richEditor?.isActive("italic") ? "active" : ""} type="button" onClick={() => richEditor?.chain().focus().toggleItalic().run()} title="Italic"><Italic size={16} /></button>
+                      <button className={richEditor?.isActive("underline") ? "active" : ""} type="button" onClick={() => richEditor?.chain().focus().toggleUnderline().run()} title="Underline"><Underline size={16} /></button>
+                      <button className={richEditor?.isActive("heading", { level: 2 }) ? "active" : ""} type="button" onClick={() => richEditor?.chain().focus().toggleHeading({ level: 2 }).run()} title="Heading"><Heading2 size={16} /></button>
+                      <button className={richEditor?.isActive("bulletList") ? "active" : ""} type="button" onClick={() => richEditor?.chain().focus().toggleBulletList().run()} title="Bullet list"><List size={16} /></button>
+                      <div className="toolbar-menu-wrap">
+                        <button className={richEditor?.isActive("orderedList") ? "active" : ""} type="button" onClick={() => setOpenEditorMenu(openEditorMenu === "numbering" ? null : "numbering")} title="Numbering style"><ListOrdered size={16} /></button>
+                        {openEditorMenu === "numbering" ? <div className="toolbar-popover"><button type="button" onClick={() => applyNumbering("1")}>1, 2, 3</button><button type="button" onClick={() => applyNumbering("a")}>a, b, c</button><button type="button" onClick={() => applyNumbering("A")}>A, B, C</button><button type="button" onClick={() => applyNumbering("i")}>i, ii, iii</button><button type="button" onClick={() => applyNumbering("I")}>I, II, III</button></div> : null}
+                      </div>
+                      <button type="button" onClick={() => richEditor?.chain().focus().setTextAlign("left").run()} title="Align left"><AlignLeft size={16} /></button>
+                      <button type="button" onClick={() => richEditor?.chain().focus().setTextAlign("center").run()} title="Align center"><AlignCenter size={16} /></button>
+                      <button type="button" onClick={() => richEditor?.chain().focus().setTextAlign("right").run()} title="Align right"><AlignRight size={16} /></button>
+                      <button type="button" onClick={() => richEditor?.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()} title="Insert table"><Table2 size={16} /></button>
+                      <label className="rich-upload-button" title="Insert image"><Image size={16} /><input type="file" accept="image/*" disabled={isUploadingAsset} onChange={(event) => uploadEditorImage(event.target.files?.[0] ?? null)} /></label>
+                    </>
+                  ) : null}
+                  {ribbonMode === "image" || ribbonMode === "optionImage" ? (
+                    <>
+                      <div className="image-size-control" title="Selected image width">
+                        <span>Width</span>
+                        {[5, 10, 25, 40, 50, 60, 75, 100].map((width) => <button className={selectedImageWidth === width ? "active" : ""} key={width} type="button" onClick={() => setEditorImageSize(width)}>{width}%</button>)}
+                        <input aria-label="Custom image width" className="toolbar-small-input" type="number" min={5} max={180} value={customImageWidth} onChange={(event) => setCustomImageWidth(Number(event.target.value || 60))} />
+                        <button type="button" onClick={() => setEditorImageSize(customImageWidth)}>%</button>
+                      </div>
+                      <button className={selectedImageAlign === "left" ? "active" : ""} type="button" onClick={() => setEditorImageAlign("left")} title="Align selected image left"><AlignLeft size={15} /></button>
+                      <button className={selectedImageAlign === "center" ? "active" : ""} type="button" onClick={() => setEditorImageAlign("center")} title="Align selected image center"><AlignCenter size={15} /></button>
+                      <button className={selectedImageAlign === "right" ? "active" : ""} type="button" onClick={() => setEditorImageAlign("right")} title="Align selected image right"><AlignRight size={15} /></button>
+                      <button className={selectedImageFit === "contain" ? "active" : ""} type="button" onClick={() => setEditorImageFit("contain")}>Fit</button>
+                      <button className={selectedImageFit === "cover" ? "active" : ""} type="button" onClick={() => setEditorImageFit("cover")}>Crop</button>
+                      {ribbonMode === "optionImage" ? <button type="button" onClick={() => updateSelectedTableAttrs({ contentAlign: "center" })}>Apply to options</button> : null}
+                    </>
+                  ) : null}
+                  {ribbonMode === "table" || ribbonMode === "optionTable" ? (
+                    <>
+                      <button type="button" onClick={() => runTableCommand("addRowBefore")}>Row above</button>
+                      <button type="button" onClick={() => runTableCommand("addRowAfter")}>Row below</button>
+                      <button type="button" onClick={() => runTableCommand("deleteRow")}>Delete row</button>
+                      <button type="button" onClick={() => runTableCommand("addColumnBefore")}>Col left</button>
+                      <button type="button" onClick={() => runTableCommand("addColumnAfter")}>Col right</button>
+                      <button type="button" onClick={() => runTableCommand("deleteColumn")}>Delete col</button>
+                      <button type="button" onClick={() => runTableCommand("mergeCells")}>Merge</button>
+                      <button type="button" onClick={() => runTableCommand("splitCell")}>Split</button>
+                      {ribbonMode === "optionTable" ? <button className={selectedTableAttrs.optionBorders !== false && selectedTableAttrs.optionBorders !== "false" ? "active" : ""} type="button" onClick={() => updateSelectedTableAttrs({ optionBorders: !(selectedTableAttrs.optionBorders !== false && selectedTableAttrs.optionBorders !== "false") })}>Borders</button> : null}
+                    </>
+                  ) : null}
+                  {ribbonMode === "optionGroup" || ribbonMode === "optionTable" ? (
+                    <>
+                      <label className="ribbon-select-label"><span>Correct</span><select value={correctOption} onChange={(event) => setCorrectOption(event.target.value)}>{["A", "B", "C", "D"].map((label) => <option key={label} value={label}>{label}</option>)}</select></label>
+                      <button className={optionLabelPlacement === "inline" ? "active" : ""} type="button" onClick={() => { setOptionLabelPlacement("inline"); updateSelectedTableAttrs({ letterPlacement: "inline" }); }}>A.</button>
+                      <button className={optionLabelPlacement === "above" ? "active" : ""} type="button" onClick={() => { setOptionLabelPlacement("above"); updateSelectedTableAttrs({ letterPlacement: "above" }); }}>A</button>
+                      <button className={optionContentAlign === "left" ? "active" : ""} type="button" onClick={() => { setOptionContentAlign("left"); updateSelectedTableAttrs({ contentAlign: "left" }); }} title="Align option content left"><AlignLeft size={15} /></button>
+                      <button className={optionContentAlign === "center" ? "active" : ""} type="button" onClick={() => { setOptionContentAlign("center"); updateSelectedTableAttrs({ contentAlign: "center" }); }} title="Center option content"><AlignCenter size={15} /></button>
+                      <button className={optionContentAlign === "right" ? "active" : ""} type="button" onClick={() => { setOptionContentAlign("right"); updateSelectedTableAttrs({ contentAlign: "right" }); }} title="Align option content right"><AlignRight size={15} /></button>
+                      <label className="ribbon-range-label"><span>Gap</span><input type="range" min={0} max={18} value={optionGapPx} onChange={(event) => { const next = Number(event.target.value); setOptionGapPx(next); updateSelectedTableAttrs({ optionGap: next }); }} /></label>
+                    </>
+                  ) : null}
+                  <span className="ribbon-divider" />
+                  <button type="button" onClick={() => richEditor?.chain().focus().undo().run()} title="Undo"><Undo2 size={16} /></button>
+                  <button type="button" onClick={() => richEditor?.chain().focus().redo().run()} title="Redo"><Redo2 size={16} /></button>
                 </div>
-                <label><span>Correct</span><select value={correctOption} onChange={(event) => setCorrectOption(event.target.value)}>{["A", "B", "C", "D"].map((label) => <option key={label} value={label}>{label}</option>)}</select></label>
-                <div className="embedded-option-buttons">
+                <div className="insert-options-ribbon">
+                  <strong>Insert options</strong>
                   {optionLayoutVisuals.map((item) => (
-                    <button className={optionLayout === item.value ? "active" : ""} key={item.value} onClick={() => insertOptionLayout(item.value)} type="button">
+                    <button className={optionLayout === item.value ? "active" : ""} key={item.value} onClick={() => requestOptionLayout(item.value)} type="button">
                       <span className={`option-layout-thumbnail ${item.className}`}><i /><i /><i /><i /></span>
-                      <strong>{item.title}</strong>
+                      <span>{item.title}</span>
                     </button>
                   ))}
                 </div>
-              </div>
-              <div className="rich-editor-shell">
-                <div className="rich-editor-toolbar">
-                  <button className={richEditor?.isActive("bold") ? "active" : ""} type="button" onClick={() => richEditor?.chain().focus().toggleBold().run()} title="Bold"><Bold size={16} /></button>
-                  <button className={richEditor?.isActive("italic") ? "active" : ""} type="button" onClick={() => richEditor?.chain().focus().toggleItalic().run()} title="Italic"><Italic size={16} /></button>
-                  <button className={richEditor?.isActive("underline") ? "active" : ""} type="button" onClick={() => richEditor?.chain().focus().toggleUnderline().run()} title="Underline"><Underline size={16} /></button>
-                  <button className={richEditor?.isActive("heading", { level: 2 }) ? "active" : ""} type="button" onClick={() => richEditor?.chain().focus().toggleHeading({ level: 2 }).run()} title="Heading"><Heading2 size={16} /></button>
-                  <button className={richEditor?.isActive("bulletList") ? "active" : ""} type="button" onClick={() => richEditor?.chain().focus().toggleBulletList().run()} title="Bullet list"><List size={16} /></button>
-                  <div className="toolbar-menu-wrap">
-                    <button className={richEditor?.isActive("orderedList") ? "active" : ""} type="button" onClick={() => setOpenEditorMenu(openEditorMenu === "numbering" ? null : "numbering")} title="Numbering style"><ListOrdered size={16} /></button>
-                    {openEditorMenu === "numbering" ? <div className="toolbar-popover"><button type="button" onClick={() => applyNumbering("1")}>1, 2, 3</button><button type="button" onClick={() => applyNumbering("a")}>a, b, c</button><button type="button" onClick={() => applyNumbering("A")}>A, B, C</button><button type="button" onClick={() => applyNumbering("i")}>i, ii, iii</button><button type="button" onClick={() => applyNumbering("I")}>I, II, III</button></div> : null}
+                {pendingOptionLayout ? (
+                  <div className="option-layout-choice-panel">
+                    <strong>An option area already exists.</strong>
+                    <span>Most MCQ questions need one A-D area, so replacing is usually best.</span>
+                    <button className="primary-action" type="button" onClick={() => replaceOptionLayout(pendingOptionLayout)}>Replace current option layout</button>
+                    <button className="secondary-action" type="button" onClick={() => { insertOptionLayout(pendingOptionLayout); setPendingOptionLayout(null); }}>Insert another option group</button>
+                    <button className="secondary-action" type="button" onClick={() => setPendingOptionLayout(null)}>Cancel</button>
                   </div>
-                  <button type="button" onClick={() => richEditor?.chain().focus().setTextAlign("left").run()} title="Align left"><AlignLeft size={16} /></button>
-                  <button type="button" onClick={() => richEditor?.chain().focus().setTextAlign("center").run()} title="Align center"><AlignCenter size={16} /></button>
-                  <button type="button" onClick={() => richEditor?.chain().focus().setTextAlign("right").run()} title="Align right"><AlignRight size={16} /></button>
-                  <button type="button" onClick={() => richEditor?.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()} title="Insert table"><Table2 size={16} /></button>
-                  <label className="rich-upload-button" title="Insert image"><Image size={16} /><input type="file" accept="image/*" disabled={isUploadingAsset} onChange={(event) => uploadEditorImage(event.target.files?.[0] ?? null)} /></label>
-                  <button type="button" onClick={() => richEditor?.chain().focus().undo().run()} title="Undo"><Undo2 size={16} /></button>
-                  <button type="button" onClick={() => richEditor?.chain().focus().redo().run()} title="Redo"><Redo2 size={16} /></button>
-                  <div className="image-size-control" title={selectedImageWidth ? "Selected image width" : "Click an image on the A4 canvas to adjust it"}>
-                    <span>Image</span>
-                    {[5, 10, 25, 40, 50, 60, 75, 100].map((width) => (
-                      <button className={selectedImageWidth === width ? "active" : ""} disabled={!selectedImageWidth} key={width} type="button" onClick={() => setEditorImageSize(width)}>
-                        {width}%
-                      </button>
-                    ))}
-                  </div>
-                  <div className="image-fit-control">
-                    <button className={selectedImageAlign === "left" ? "active" : ""} type="button" disabled={!selectedImageWidth} onClick={() => setEditorImageAlign("left")} title="Align selected image left"><AlignLeft size={15} /></button>
-                    <button className={selectedImageAlign === "center" ? "active" : ""} type="button" disabled={!selectedImageWidth} onClick={() => setEditorImageAlign("center")} title="Align selected image center"><AlignCenter size={15} /></button>
-                    <button className={selectedImageAlign === "right" ? "active" : ""} type="button" disabled={!selectedImageWidth} onClick={() => setEditorImageAlign("right")} title="Align selected image right"><AlignRight size={15} /></button>
-                  </div>
-                  <div className="image-fit-control">
-                    <button className={selectedImageFit === "contain" ? "active" : ""} type="button" disabled={!selectedImageWidth} onClick={() => setEditorImageFit("contain")}>Fit</button>
-                    <button className={selectedImageFit === "cover" ? "active" : ""} type="button" disabled={!selectedImageWidth} onClick={() => setEditorImageFit("cover")}>Crop</button>
-                  </div>
-                </div>
+                ) : null}
                 <div className="a4-editor-stage" ref={editorScaleRef}>
                   <div className="a4-scale-shell" style={{ "--a4-scale": editorScale } as CSSProperties}>
                     <div className="a4-editor-page">
@@ -1823,6 +2050,19 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
         </div>
 
         <aside className="panel mcq-preview-panel sticky-preview">
+          <div className="mcq-selection-inspector">
+            <div>
+              <strong>{ribbonTitle[ribbonMode]}</strong>
+              <span>{ribbonMode === "text" ? "Question-level typing and insertion tools." : ribbonMode === "image" || ribbonMode === "optionImage" ? "Selected image controls." : ribbonMode === "optionTable" ? "Structured table answer options." : ribbonMode === "optionGroup" ? "A-D layout and answer controls." : "Normal question table controls."}</span>
+            </div>
+            <dl>
+              <div><dt>Correct</dt><dd>{correctOption}</dd></div>
+              <div><dt>Layout</dt><dd>{optionLayout.replace("_", " ")}</dd></div>
+              <div><dt>Options</dt><dd>{extractedOptions.filter((option) => option.text.trim()).length}/4 read</dd></div>
+              {selectedImageWidth ? <div><dt>Image</dt><dd>{selectedImageWidth}% {selectedImageAlign}</dd></div> : null}
+              {isOptionGroup ? <div><dt>Borders</dt><dd>{selectedTableAttrs.optionBorders === false || selectedTableAttrs.optionBorders === "false" ? "Off" : "On"}</dd></div> : null}
+            </dl>
+          </div>
           <div className="dashboard-widget-head"><div><strong>A4 live preview</strong><span>Student-facing layout, using your selected structure.</span></div></div>
           <div className="a4-preview-viewport" ref={previewScaleRef}>
             <div className="a4-scale-shell" style={{ "--a4-scale": previewScale } as CSSProperties}>

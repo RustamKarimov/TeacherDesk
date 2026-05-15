@@ -1490,7 +1490,29 @@ def _rich_node_html(node: dict[str, object], question: MCQQuestion) -> str:
         image_align = attrs.get("data-align") if attrs.get("data-align") in {"left", "right"} else "center"
         return f"<img class=\"a4-question-image fit-{fit} align-{image_align}\" style=\"width:{escape(width_css)}\" src=\"{src}\" alt=\"{escape(str(attrs.get('alt') or 'Question image'))}\">"
     if node_type == "table":
-        return f"<table class=\"mcq-preview-table rich-table\"><tbody>{children}</tbody></table>"
+        is_option_group = bool(attrs.get("optionGroup"))
+        classes = ["mcq-preview-table", "rich-table"]
+        data_attrs = ""
+        style_attr = ""
+        if is_option_group:
+            classes.append("embedded-option-table")
+            data_attrs += ' data-mcq-option-group="true"'
+            option_layout = str(attrs.get("optionLayout") or "")
+            if option_layout:
+                classes.append(f"layout-{escape(option_layout)}")
+                data_attrs += f' data-option-layout="{escape(option_layout)}"'
+            if attrs.get("optionBorders") is False or attrs.get("optionBorders") == "false":
+                classes.append("no-borders")
+                data_attrs += ' data-option-borders="false"'
+            if attrs.get("optionHeaders") is False or attrs.get("optionHeaders") == "false":
+                classes.append("hide-headers")
+            for key, prefix in (("letterPlacement", "letter"), ("letterAlign", "letter-align"), ("contentAlign", "content-align"), ("cellPadding", "padding")):
+                value = str(attrs.get(key) or "")
+                if value:
+                    classes.append(f"{prefix}-{escape(value)}")
+            if attrs.get("optionGap") not in {None, ""}:
+                style_attr = f' style="--mcq-option-gap:{escape(str(attrs.get("optionGap")))}px"'
+        return f"<table class=\"{' '.join(classes)}\"{data_attrs}{style_attr}><tbody>{children}</tbody></table>"
     if node_type == "tableRow":
         return f"<tr>{children}</tr>"
     if node_type == "tableHeader":
@@ -1717,6 +1739,13 @@ p {{ margin: 0 0 9px; }}
 .option-preview-grid.option-images-same_size .a4-option-image {{ width: 100% !important; height: 86px !important; object-fit: contain; }}
 .mcq-preview-table,.mcq-answer-table-preview {{ width: 100%; border-collapse: collapse; margin: 8px 0; }}
 .mcq-preview-table th,.mcq-preview-table td,.mcq-answer-table-preview th,.mcq-answer-table-preview td {{ border: 1px solid #111827; padding: 7px 8px; text-align: center; vertical-align: middle; }}
+.mcq-preview-table.embedded-option-table.no-borders th,.mcq-preview-table.embedded-option-table.no-borders td {{ border-color: transparent; }}
+.mcq-preview-table.embedded-option-table.letter-align-left td:nth-child(odd),.mcq-preview-table.embedded-option-table.letter-align-left th:nth-child(odd) {{ text-align: left; }}
+.mcq-preview-table.embedded-option-table.letter-align-center td:nth-child(odd),.mcq-preview-table.embedded-option-table.letter-align-center th:nth-child(odd) {{ text-align: center; }}
+.mcq-preview-table.embedded-option-table.letter-align-right td:nth-child(odd),.mcq-preview-table.embedded-option-table.letter-align-right th:nth-child(odd) {{ text-align: right; }}
+.mcq-preview-table.embedded-option-table.content-align-left td:nth-child(even),.mcq-preview-table.embedded-option-table.content-align-left th:nth-child(even) {{ text-align: left; }}
+.mcq-preview-table.embedded-option-table.content-align-center td:nth-child(even),.mcq-preview-table.embedded-option-table.content-align-center th:nth-child(even) {{ text-align: center; }}
+.mcq-preview-table.embedded-option-table.content-align-right td:nth-child(even),.mcq-preview-table.embedded-option-table.content-align-right th:nth-child(even) {{ text-align: right; }}
 .mcq-answer-table-preview.no-borders th,.mcq-answer-table-preview.no-borders td {{ border-color: transparent; }}
 .mcq-table-cell-content {{ display: grid; gap: 4px; justify-items: center; align-items: center; }}
 .mcq-table-cell-content img {{ display: block; max-width: 100%; max-height: 80px; object-fit: contain; }}

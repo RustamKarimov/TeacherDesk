@@ -133,7 +133,24 @@ export function renderRichNode(node: JSONContent, key = "node"): ReactNode {
     const align = node.attrs?.["data-align"] === "left" || node.attrs?.["data-align"] === "right" ? node.attrs["data-align"] : "center";
     return <img className={`a4-question-image fit-${fit} align-${align}`} key={key} src={String(node.attrs?.src || "")} alt={String(node.attrs?.alt || "Question image")} style={{ width }} />;
   }
-  if (node.type === "table") return <table className="mcq-preview-table rich-table" key={key}><tbody>{children}</tbody></table>;
+  if (node.type === "table") {
+    const attrs = node.attrs ?? {};
+    const isOptionGroup = Boolean(attrs.optionGroup);
+    const className = [
+      "mcq-preview-table",
+      "rich-table",
+      isOptionGroup ? "embedded-option-table" : "",
+      attrs.optionLayout ? `layout-${attrs.optionLayout}` : "",
+      attrs.optionBorders === false || attrs.optionBorders === "false" ? "no-borders" : "",
+      attrs.optionHeaders === false || attrs.optionHeaders === "false" ? "hide-headers" : "",
+      attrs.letterPlacement ? `letter-${attrs.letterPlacement}` : "",
+      attrs.letterAlign ? `letter-align-${attrs.letterAlign}` : "",
+      attrs.contentAlign ? `content-align-${attrs.contentAlign}` : "",
+      attrs.cellPadding ? `padding-${attrs.cellPadding}` : "",
+    ].filter(Boolean).join(" ");
+    const style = attrs.optionGap !== null && attrs.optionGap !== undefined ? { "--mcq-option-gap": `${Number(attrs.optionGap) || 0}px` } as CSSProperties : undefined;
+    return <table className={className} data-mcq-option-group={isOptionGroup ? "true" : undefined} data-option-layout={String(attrs.optionLayout || "") || undefined} key={key} style={style}><tbody>{children}</tbody></table>;
+  }
   if (node.type === "tableRow") return <tr key={key}>{children}</tr>;
   if (node.type === "tableHeader") return <th key={key}>{children}</th>;
   if (node.type === "tableCell") return <td key={key}>{children}</td>;
