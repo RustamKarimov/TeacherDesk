@@ -1,4 +1,4 @@
-import { AlignCenter, AlignLeft, AlignRight, AlignVerticalJustifyCenter, AlignVerticalJustifyEnd, AlignVerticalJustifyStart, Bold, Check, Heading2, Image, Italic, List, ListOrdered, Plus, Redo2, Save, Scaling, StretchHorizontal, StretchVertical, Table2, Trash2, Underline, Undo2, UploadCloud } from "lucide-react";
+import { AlignCenter, AlignLeft, AlignRight, AlignVerticalJustifyCenter, AlignVerticalJustifyEnd, AlignVerticalJustifyStart, AlertTriangle, Bold, Check, Columns3, Heading2, Image, Italic, List, ListOrdered, Merge, Plus, Redo2, Rows3, Save, Scissors, Scaling, StretchHorizontal, StretchVertical, Table2, Trash2, Underline, Undo2, UploadCloud } from "lucide-react";
 import { EditorContent, type JSONContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import TiptapImage from "@tiptap/extension-image";
@@ -1841,7 +1841,10 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
     const isOpen = openMetadataPicker === kind;
     return (
       <div className="metadata-picker compact-combo">
-        <strong>{title}</strong>
+        <div className="metadata-picker-head">
+          <strong>{title}</strong>
+          <button className="metadata-add-icon" type="button" onClick={() => void onCreate()} title={`Add ${title.toLowerCase().slice(0, -1)}`}><Plus size={15} /></button>
+        </div>
         {selectedMetadataChips(items, selectedIds, setter)}
         <div className="metadata-combo">
           <input
@@ -1860,7 +1863,7 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
             }}
             placeholder={placeholder}
           />
-          <button className="secondary-action" type="button" onClick={() => void onCreate()}><Plus size={15} />Add</button>
+          <button className="secondary-action metadata-inline-add" type="button" onClick={() => void onCreate()} title={`Add ${title.toLowerCase().slice(0, -1)}`}><Plus size={15} /></button>
           {isOpen ? (
             <div className="metadata-combo-list" onPointerDown={(event) => event.stopPropagation()}>
               {matches.length ? matches.map((item) => (
@@ -1975,15 +1978,15 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
                   ) : null}
                   {ribbonMode === "table" || ribbonMode === "optionTable" ? (
                     <>
-                      <button type="button" onClick={() => runTableCommand("addRowBefore")}>Row above</button>
-                      <button type="button" onClick={() => runTableCommand("addRowAfter")}>Row below</button>
-                      <button type="button" onClick={() => runTableCommand("deleteRow")}>Delete row</button>
-                      <button type="button" onClick={() => runTableCommand("addColumnBefore")}>Col left</button>
-                      <button type="button" onClick={() => runTableCommand("addColumnAfter")}>Col right</button>
-                      <button type="button" onClick={() => runTableCommand("deleteColumn")}>Delete col</button>
-                      <button type="button" onClick={() => runTableCommand("mergeCells")}>Merge</button>
-                      <button type="button" onClick={() => runTableCommand("splitCell")}>Split</button>
-                      {ribbonMode === "optionTable" ? <button className={selectedTableAttrs.optionBorders !== false && selectedTableAttrs.optionBorders !== "false" ? "active" : ""} type="button" onClick={() => updateSelectedTableAttrs({ optionBorders: !(selectedTableAttrs.optionBorders !== false && selectedTableAttrs.optionBorders !== "false") })}>Borders</button> : null}
+                      <button type="button" onClick={() => runTableCommand("addRowBefore")} title="Add row above"><Rows3 size={15} /><span className="mini-corner above">+</span></button>
+                      <button type="button" onClick={() => runTableCommand("addRowAfter")} title="Add row below"><Rows3 size={15} /><span className="mini-corner below">+</span></button>
+                      <button type="button" onClick={() => runTableCommand("deleteRow")} title="Delete row"><Rows3 size={15} /><span className="mini-corner delete">-</span></button>
+                      <button type="button" onClick={() => runTableCommand("addColumnBefore")} title="Add column left"><Columns3 size={15} /><span className="mini-corner left">+</span></button>
+                      <button type="button" onClick={() => runTableCommand("addColumnAfter")} title="Add column right"><Columns3 size={15} /><span className="mini-corner right">+</span></button>
+                      <button type="button" onClick={() => runTableCommand("deleteColumn")} title="Delete column"><Columns3 size={15} /><span className="mini-corner delete">-</span></button>
+                      <button type="button" onClick={() => runTableCommand("mergeCells")} title="Merge cells"><Merge size={15} /></button>
+                      <button type="button" onClick={() => runTableCommand("splitCell")} title="Split cell"><Scissors size={15} /></button>
+                      {ribbonMode === "optionTable" ? <button className={selectedTableAttrs.optionBorders !== false && selectedTableAttrs.optionBorders !== "false" ? "active" : ""} type="button" onClick={() => updateSelectedTableAttrs({ optionBorders: !(selectedTableAttrs.optionBorders !== false && selectedTableAttrs.optionBorders !== "false") })} title="Toggle table borders"><Table2 size={15} /></button> : null}
                     </>
                   ) : null}
                   <span className="ribbon-divider" />
@@ -2026,8 +2029,8 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
                     {ribbonMode === "optionTable" ? (
                       <div className="answer-control-row">
                         <strong>Table style</strong>
-                        <button className={selectedTableAttrs.optionBorders !== false && selectedTableAttrs.optionBorders !== "false" ? "active" : ""} type="button" onClick={() => updateSelectedTableAttrs({ optionBorders: !(selectedTableAttrs.optionBorders !== false && selectedTableAttrs.optionBorders !== "false") })}>Borders</button>
-                        <button className={selectedTableAttrs.optionHeaders !== false && selectedTableAttrs.optionHeaders !== "false" ? "active" : ""} type="button" onClick={() => updateSelectedTableAttrs({ optionHeaders: !(selectedTableAttrs.optionHeaders !== false && selectedTableAttrs.optionHeaders !== "false") })}>Headers</button>
+                        <label className="mini-switch"><input checked={selectedTableAttrs.optionBorders !== false && selectedTableAttrs.optionBorders !== "false"} type="checkbox" onChange={() => updateSelectedTableAttrs({ optionBorders: !(selectedTableAttrs.optionBorders !== false && selectedTableAttrs.optionBorders !== "false") })} /><span />Borders</label>
+                        <label className="mini-switch"><input checked={selectedTableAttrs.optionHeaders !== false && selectedTableAttrs.optionHeaders !== "false"} type="checkbox" onChange={() => updateSelectedTableAttrs({ optionHeaders: !(selectedTableAttrs.optionHeaders !== false && selectedTableAttrs.optionHeaders !== "false") })} /><span />Headers</label>
                       </div>
                     ) : null}
                   </div>
@@ -2249,13 +2252,12 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
             </div>
           ) : null}
 
-          <div className="mcq-bottom-controls">{stepLabels.length > 1 ? <button className="secondary-action" disabled={step === "question"} onClick={() => setStep(stepLabels[Math.max(stepLabels.findIndex((item) => item.value === step) - 1, 0)].value)}>Back</button> : null}{stepLabels.length > 1 ? <button className="secondary-action" disabled={step === "metadata"} onClick={() => setStep(stepLabels[Math.min(stepLabels.findIndex((item) => item.value === step) + 1, stepLabels.length - 1)].value)}>Continue</button> : null}<button className="secondary-action" disabled={isSaving} onClick={() => saveQuestion(false)}><Save size={16} />Save</button><button className="primary-action" disabled={isSaving} onClick={() => saveQuestion(true)}><Plus size={16} />Save and add another</button></div>
+          <div className="mcq-bottom-controls editor-save-actions">{stepLabels.length > 1 ? <button className="secondary-action" disabled={step === "question"} onClick={() => setStep(stepLabels[Math.max(stepLabels.findIndex((item) => item.value === step) - 1, 0)].value)}>Back</button> : null}{stepLabels.length > 1 ? <button className="secondary-action" disabled={step === "metadata"} onClick={() => setStep(stepLabels[Math.min(stepLabels.findIndex((item) => item.value === step) + 1, stepLabels.length - 1)].value)}>Continue</button> : null}<button className="secondary-action compact-save-action" disabled={isSaving} onClick={() => saveQuestion(false)}><Save size={16} />Save</button><button className="primary-action compact-save-action" disabled={isSaving} onClick={() => saveQuestion(true)}><Plus size={16} />Save and add another</button></div>
         </div>
 
         <aside className="panel mcq-preview-panel sticky-preview">
           <div ref={metadataPickerRef} className="side-metadata-panel top-metadata-panel">
-            <div className="dashboard-widget-head compact-head"><div><strong>Question details</strong><span>Filtering and answer key data.</span></div></div>
-            {!sourceQuestionNumber.trim() ? <div className="callout warning compact-callout">Original question number is empty.</div> : null}
+            <div className="dashboard-widget-head compact-head"><div><strong>Question details</strong><span>Filtering and answer key data.</span></div>{!sourceQuestionNumber.trim() ? <span className="metadata-warning-icon" title="Original question number is empty."><AlertTriangle size={15} /></span> : null}</div>
             <div className="side-metadata-grid">
               <label className="field-stack compact wide"><span>Exam code</span><input value={examCode} onBlur={applyExamCodeDefaults} onChange={(event) => setExamCode(event.target.value)} placeholder="9702_w23_qp_11" /></label>
               <label className="field-stack compact"><span>Original question</span><div className="prefixed-input"><span>Q</span><input value={sourceQuestionNumber} onChange={(event) => setSourceQuestionNumber(sourceQuestionDigits(event.target.value))} placeholder="12" /></div></label>
@@ -2291,7 +2293,6 @@ export function MCQAddQuestionView({ questionId, onSaved }: { questionId?: numbe
               />
             </div>
           </div>
-          <div className="metadata-mini"><span><Check size={15} />{reviewStatus.replace("_", " ")}</span><span>{marks} mark</span><span>{optionLayout.replace("_", " ")}</span></div>
         </aside>
       </section>
     </>
