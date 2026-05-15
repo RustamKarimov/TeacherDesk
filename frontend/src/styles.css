@@ -6232,6 +6232,23 @@ td,
   margin: 0;
 }
 
+.option-preview-grid.label-below > span {
+  display: grid;
+  gap: 4px;
+  justify-items: start;
+}
+
+.option-preview-grid.label-below > span b {
+  display: block;
+  width: 100%;
+  margin: 0;
+  order: 2;
+}
+
+.option-preview-grid.label-below > span .option-body {
+  order: 1;
+}
+
 .option-preview-grid.label-align-left > span b {
   text-align: left;
 }
@@ -6273,12 +6290,15 @@ td,
 }
 
 .option-preview-grid.image-place-middle.label-above .option-body,
-.option-preview-grid.image-place-bottom.label-above .option-body {
+.option-preview-grid.image-place-bottom.label-above .option-body,
+.option-preview-grid.image-place-middle.label-below .option-body,
+.option-preview-grid.image-place-bottom.label-below .option-body {
   display: grid;
   align-content: center;
 }
 
-.option-preview-grid.image-place-bottom.label-above .option-body {
+.option-preview-grid.image-place-bottom.label-above .option-body,
+.option-preview-grid.image-place-bottom.label-below .option-body {
   align-content: end;
 }
 
@@ -7553,6 +7573,19 @@ td,
   padding-top: 14px;
 }
 
+.top-metadata-panel {
+  border-top: 0;
+  margin-top: 0;
+  margin-bottom: 14px;
+  padding-top: 0;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--line, #d8e1eb);
+}
+
+.tag-metadata-panel {
+  margin-top: 16px;
+}
+
 .side-metadata-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -7944,6 +7977,20 @@ td,
 .a4-rich-editor-content .tableWrapper[data-mcq-option-group="true"][data-option-letter-align="right"] td:nth-child(odd),
 .a4-rich-editor-content .tableWrapper[data-mcq-option-group="true"][data-option-letter-align="right"] th:nth-child(odd) {
   text-align: right;
+}
+
+.a4-rich-editor-content table[data-mcq-option-group="true"][data-option-letter-placement="above"] td:nth-child(odd),
+.a4-rich-editor-content table[data-mcq-option-group="true"][data-option-letter-placement="above"] th:nth-child(odd),
+.a4-rich-editor-content .tableWrapper[data-mcq-option-group="true"][data-option-letter-placement="above"] td:nth-child(odd),
+.a4-rich-editor-content .tableWrapper[data-mcq-option-group="true"][data-option-letter-placement="above"] th:nth-child(odd) {
+  vertical-align: top;
+}
+
+.a4-rich-editor-content table[data-mcq-option-group="true"][data-option-letter-placement="below"] td:nth-child(odd),
+.a4-rich-editor-content table[data-mcq-option-group="true"][data-option-letter-placement="below"] th:nth-child(odd),
+.a4-rich-editor-content .tableWrapper[data-mcq-option-group="true"][data-option-letter-placement="below"] td:nth-child(odd),
+.a4-rich-editor-content .tableWrapper[data-mcq-option-group="true"][data-option-letter-placement="below"] th:nth-child(odd) {
+  vertical-align: bottom;
 }
 
 .a4-rich-editor-content table[data-mcq-option-group="true"][data-option-content-align="center"] td:nth-child(even),

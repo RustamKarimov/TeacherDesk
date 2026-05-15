@@ -8,7 +8,7 @@ import type { MCQAsset } from "../types";
 
 export type MCQOptionImagePlacement = "top" | "middle" | "bottom";
 export type MCQOptionImageSizing = "individual" | "same_height" | "same_width" | "same_size";
-export type MCQOptionLabelPlacement = "inline" | "above";
+export type MCQOptionLabelPlacement = "inline" | "above" | "below";
 export type MCQOptionContentAlign = "left" | "center" | "right";
 export type MCQOptionLabelAlign = "left" | "center" | "right";
 
@@ -276,8 +276,9 @@ export function MCQA4Question({
             <div className={`option-preview-grid layout-${optionLayout} option-images-${sizing} label-${labelPlacement} label-align-${labelAlign} align-${contentAlign} image-place-${placement}`}>
               {sortedOptions.map((option) => (
                 <span className={teacherView && option.is_correct ? "correct" : ""} key={option.id ?? option.label}>
-                  <b>{option.label}{labelPlacement === "inline" ? "." : ""}</b>
+                  {labelPlacement === "below" ? null : <b>{option.label}{labelPlacement === "inline" ? "." : ""}</b>}
                   <span className="option-body">{renderOptionContent(option, placement)}</span>
+                  {labelPlacement === "below" ? <b>{option.label}</b> : null}
                 </span>
               ))}
             </div>
